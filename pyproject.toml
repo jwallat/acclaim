@@ -1,0 +1,10 @@
+[project]
+name = "acclaim"
+version = "0.0.0"
+description = "Atomic Citation CLAIM evaluation library (placeholder — under active development)"
+readme = "README.md"
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
