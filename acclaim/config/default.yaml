@@ -1,0 +1,163 @@
+# acclaim default configuration
+# All values here can be overridden by passing keyword arguments to evaluate().
+
+# ── Claim extraction ──────────────────────────────────────────────────────────
+# "sentence" : one claim per sentence (default, fast, no LLM call needed)
+# "atomic"   : LLM decomposes each sentence into sub-claims (slower, more precise)
+claim_extractor: atomic
+
+# ── Evidence judge ────────────────────────────────────────────────────────────
+# model/max_tokens below mirror the best-performing config from the
+# library_evals/judges model comparison (see library_evals/judges/config.yaml).
+judge:
+  model: openrouter/google/gemma-4-26b-a4b-it
+  api_base: null          # Set to e.g. "http://localhost:8000/v1" for local vLLM
+  api_key: null           # Falls back to a provider-specific env var when null
+                          # (e.g. OPENROUTER_API_KEY for openrouter/... models)
+  temperature: 0.0
+  max_tokens: 2048
+  max_retries: 3
+  # Reasoning/thinking is disabled by default. Set to true to enable it on
+  # vLLM-served models (Qwen3, etc.) — sends chat_template_kwargs.enable_thinking.
+  thinking: false
+  system_prompt: |
+    You are an expert fact-checker. Determine whether the provided claim is supported by the evidence document.
+
+    Respond with a JSON object with exactly these keys:
+    - "label":      One of "SUPPORTED", "REFUTED", or "UNCLEAR"
+    - "confidence": Float between 0.0 and 1.0
+    - "reason":     One sentence explaining your judgment
+
+    Label definitions:
+      SUPPORTED — the document explicitly states or strongly implies the claim is true
+      REFUTED   — the document contains a direct, clear contradiction of the claim
+      UNCLEAR   — the document does not address the claim, is off-topic, or the evidence is ambiguous
+
+    Important: use REFUTED only for direct contradictions. If the document simply does not mention the claim or is about a different topic, use UNCLEAR.
+
+    ---
+
+    Example 1 — SUPPORTED
+
+    Document: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It was constructed from 1887 to 1889."
+    Claim: "The Eiffel Tower is located in Paris."
+    {"label": "SUPPORTED", "confidence": 0.99, "reason": "The document explicitly states the Eiffel Tower is in Paris, France."}
+
+    ---
+
+    Example 2 — REFUTED
+
+    Document: "It was announced that the first concert would be pushed back by eight days to July 16, and three other July dates would be rescheduled for March 2010."
+    Claim: "The first concert was rescheduled for July 13."
+    {"label": "REFUTED", "confidence": 0.97, "reason": "The document states the concert was moved to July 16, directly contradicting the claim of July 13."}
+
+    ---
+
+    Example 3 — UNCLEAR
+
+    Document: "India is the 7th largest producer of hydroelectric power in the world. As of April 2017, India's installed utility-scale hydroelectric capacity was 44,594 MW."
+    Claim: "The Colorado River flows through the Grand Canyon."
+    {"label": "UNCLEAR", "confidence": 0.99, "reason": "The document is about hydroelectric power in India and does not address the claim about the Colorado River."}
+
+# ── Atomic claim extractor ──────────────────────────────────────────────────────
+# Only used when `claim_extractor: atomic` above. api_base/api_key/
+# temperature/max_retries/thinking default to null, meaning "reuse the
+# `judge:` config above" so you typically only configure one LLM endpoint.
+# max_tokens and system_prompt are extractor-specific (claim decomposition
+# needs a different prompt/response length than evidence judgment) and never
+# fall back to `judge:` — set them explicitly here to override.
+#
+# model/max_tokens below mirror the best-performing config from the
+# library_evals/atomic_claims model comparison (see run_eval_all_models.sh).
+atomic_claim_extractor:
+  model: openrouter/google/gemma-4-26b-a4b-it
+  api_base: null
+  api_key: null
+  temperature: null
+  max_tokens: 12196
+  max_retries: null
+  thinking: null
+  system_prompt: null   # null keeps the extractor's built-in claim-decomposition prompt
+
+# ── Jaccard citation aligner ─────────────────────────────────────────────────
+# Only used when `claim_extractor: atomic` above (JaccardCitationAligner is
+# the auto-selected aligner for atomic claims).
+jaccard_aligner:
+  # If true (default), weight tokens by inverse claim-frequency within the
+  # same answer before computing Jaccard similarity. This corrects a bias
+  # where claims that restate a coreference-resolved subject (e.g. "the
+  # song 'X'") in every claim get matched to the sentence that introduces
+  # that subject rather than the sentence that actually contains the cited
+  # fact. Set to false for plain, unweighted Jaccard similarity.
+  weighted: true
+
+# ── Concurrency ───────────────────────────────────────────────────────────────
+# Thread-pool parallelism for LLM judge calls (claim-level within evaluate(),
+# and example-level in evaluate_batch()). Threads are used (not asyncio)
+# because litellm.completion() calls are synchronous and I/O-bound.
+# Default 1 = fully sequential, identical to pre-concurrency behavior.
+# Raise this once you've confirmed your LLM endpoint/provider can handle
+# concurrent requests (rate limits, local vLLM batch capacity, etc.).
+concurrency:
+  max_workers: 10
+
+# ── Metrics ───────────────────────────────────────────────────────────────────
+metrics:
+  - citation_precision
+  - citation_recall
+  - citation_f1
+  - citation_correctness
+  - citation_lengths
+  - citation_number
+  - coverage
+  - cvcp
+  - hallucination_rate
+  - supported_claim_rate
+  - token_overlap
+
+# TokenOverlap metric configuration
+token_overlap:
+  log_similarities: false
+
+# CitationRecall judge configuration (optional).
+# When omitted or null, the metric reuses the top-level `judge:` config.
+# Uncomment and fill in to use a different model for citation recall scoring:
+# citation_recall_judge:
+#   model: gpt-4o-mini
+#   api_base: null
+#   api_key: null
+#   temperature: 0.0
+#   max_tokens: 512
+#   max_retries: 3
+
+# CitationPrecision judge configuration (optional).
+# When omitted or null, the metric reuses the top-level `judge:` config.
+# Uncomment and fill in to use a different model for citation precision scoring:
+# citation_precision_judge:
+#   model: gpt-4o-mini
+#   api_base: null
+#   api_key: null
+#   temperature: 0.0
+#   max_tokens: 512
+#   max_retries: 3
+
+# ── Relevance stratification ──────────────────────────────────────────────────
+# Opt-in and independent from `metrics:` above. Base metrics listed here are
+# additionally run separately for each relevance stratum (CORE /
+# COMPLEMENTARY / IRRELEVANT).  Only active when evaluate() is called with a
+# `question` argument.  Results appear as e.g. "citation_correctness_core".
+# Empty by default — uncomment to opt in:
+relevance_stratified_metrics: []
+# relevance_stratified_metrics:
+#   - citation_correctness
+
+# Relevance judge configuration (optional).
+# When omitted or null, the judge reuses the top-level `judge:` config.
+# Uncomment and fill in to use a different model for relevance classification:
+# relevance_judge:
+#   model: gpt-4o-mini
+#   api_base: null
+#   api_key: null
+#   temperature: 0.0
+#   max_tokens: 512
+#   max_retries: 3

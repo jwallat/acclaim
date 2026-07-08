@@ -1,0 +1,63 @@
+{
+  "n_examples": 20,
+  "claim_count": {
+    "mean": 8.75,
+    "std": 5.127133702177075,
+    "n": 20,
+    "frac_ge_0_9": 0.9
+  },
+  "faithfulness_mean": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "faithful_fraction": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "coverage_sentence": {
+    "mean": 0.5661309523809523,
+    "std": 0.3205084880332509,
+    "n": 20,
+    "frac_ge_0_9": 0.25
+  },
+  "coverage_whole": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "sentence_claim_coverage": {
+    "mean": 0.7813492063492063,
+    "std": 0.3844128134392848,
+    "n": 20,
+    "frac_ge_0_9": 0.75
+  },
+  "atomicity": {
+    "mean": 0.8958333333333334,
+    "std": 0.2991597027973149,
+    "n": 20,
+    "frac_ge_0_9": 0.9
+  },
+  "non_redundancy": {
+    "mean": 0.9693055555555556,
+    "std": 0.06478522803544753,
+    "n": 20,
+    "frac_ge_0_9": 0.85
+  },
+  "config": {
+    "nli_model": "cross-encoder/nli-deberta-v3-large",
+    "threshold": 0.5,
+    "metrics": [
+      "atomicity",
+      "coverage",
+      "non_redundancy",
+      "sentence_claim_coverage"
+    ],
+    "coverage_topk": 3,
+    "input": "/home/wallat/attribution-eval/library_evals/atomic_claims/predicted_claims.jsonl"
+  }
+}

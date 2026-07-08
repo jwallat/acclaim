@@ -1,0 +1,63 @@
+# Evaluation settings passed to acclaim.evaluate().
+# Shared between the acclaim explorer server and any batch evaluation scripts.
+
+claim_extractor: atomic   # "sentence" (fast, no LLM) or "atomic" (LLM-based, richer)
+
+judge:
+  model: "openrouter/google/gemma-4-31b-it"
+  api_key: ${OPENROUTER_API_KEY}
+  temperature: 0.0
+  max_tokens: 2048
+  max_retries: 3
+  system_prompt: |
+    You are an expert fact-checker. Determine whether the provided claim is supported by the evidence document.
+
+    Respond with a JSON object with exactly these keys:
+    - "label":      One of "SUPPORTED", "REFUTED", or "UNCLEAR"
+    - "confidence": Float between 0.0 and 1.0
+    - "reason":     One sentence explaining your judgment
+
+    Label definitions:
+      SUPPORTED — the document explicitly states or strongly implies the claim is true
+      REFUTED   — the document contains a direct, clear contradiction of the claim
+      UNCLEAR   — the document does not address the claim, is off-topic, or the evidence is ambiguous
+
+    Important: use REFUTED only for direct contradictions. If the document simply does not mention the claim or is about a different topic, use UNCLEAR.
+
+    ---
+
+    Example 1 — SUPPORTED
+
+    Document: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It was constructed from 1887 to 1889."
+    Claim: "The Eiffel Tower is located in Paris."
+    {"label": "SUPPORTED", "confidence": 0.99, "reason": "The document explicitly states the Eiffel Tower is in Paris, France."}
+
+    ---
+
+    Example 2 — REFUTED
+
+    Document: "It was announced that the first concert would be pushed back by eight days to July 16, and three other July dates would be rescheduled for March 2010."
+    Claim: "The first concert was rescheduled for July 13."
+    {"label": "REFUTED", "confidence": 0.97, "reason": "The document states the concert was moved to July 16, directly contradicting the claim of July 13."}
+
+    ---
+
+    Example 3 — UNCLEAR
+
+    Document: "India is the 7th largest producer of hydroelectric power in the world. As of April 2017, India's installed utility-scale hydroelectric capacity was 44,594 MW."
+    Claim: "The Colorado River flows through the Grand Canyon."
+    {"label": "UNCLEAR", "confidence": 0.99, "reason": "The document is about hydroelectric power in India and does not address the claim about the Colorado River."}
+
+metrics:
+  - citation_correctness
+  # - citation_recall
+  - hallucination_rate
+  - coverage
+  - token_overlap
+
+# Thread-pool parallelism for LLM judge calls within a single evaluate() run.
+# Default 1 = fully sequential. Raise to speed up requests with several
+# claims (e.g. atomic extraction) once your endpoint can handle concurrent
+# requests.
+concurrency:
+  max_workers: 20

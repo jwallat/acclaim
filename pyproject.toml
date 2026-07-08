@@ -1,10 +1,41 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "acclaim"
-version = "0.0.0"
-description = "Atomic Citation CLAIM evaluation library (placeholder — under active development)"
+version = "0.1.0"
+description = "Evaluate citation attribution quality of LLM-generated answers."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.30.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "pysbd>=0.3.4",
+    "transformers>=5.0.0",
+]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio",
+    "python-dotenv>=1.0",
+]
+server = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "aiofiles>=23.0",
+    "pyserini>=0.22",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["acclaim*"]
+
+[tool.pytest.ini_options]
+testpaths = ["acclaim/tests"]
+markers = [
+    "e2e: end-to-end tests that require a running LLM endpoint",
+    "vllm: tests that require a local vLLM server (start_vllm.sh)",
+]

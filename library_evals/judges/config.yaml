@@ -1,0 +1,60 @@
+# Judge evaluation configuration
+# Fill in the judge section before running run_judges.py.
+# ${VAR} values are resolved from environment variables at runtime.
+claim_extractor: atomic
+
+judge:
+  # model: "openrouter/google/gemma-4-31b-it:free"  # any LiteLLM model string
+  # model: "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+  # model: "openrouter/nvidia/nemotron-3-super-120b-a12b"
+  # model: "openrouter/anthropic/claude-haiku-4.5"
+  # model: "openrouter/z-ai/glm-4.5-air:free"
+  # model: "openrouter/google/gemini-3.1-flash-lite"
+  model: "openrouter/openai/gpt-5.4-mini"
+  # model: "openrouter/qwen/qwen3.6-35b-a3b"
+  # model: "openrouter/anthropic/claude-sonnet-4.6"
+  # model: "openrouter/google/gemma-4-26b-a4b-it"
+  # model: "openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+  api_base: null
+  api_key: ${OPENROUTER_API_KEY}
+  temperature: 0.0
+  max_tokens: 2048
+  max_retries: 3
+  system_prompt: |
+    You are an expert fact-checker. Determine whether the provided claim is supported by the evidence document.
+
+    Respond with a JSON object with exactly these keys:
+    - "label":      One of "SUPPORTED", "REFUTED", or "UNCLEAR"
+    - "confidence": Float between 0.0 and 1.0
+    - "reason":     One sentence explaining your judgment
+
+    Label definitions:
+      SUPPORTED — the document explicitly states or strongly implies the claim is true
+      REFUTED   — the document contains a direct, clear contradiction of the claim
+      UNCLEAR   — the document does not address the claim, is off-topic, or the evidence is ambiguous
+
+    Important: use REFUTED only for direct contradictions. If the document simply does not mention the claim or is about a different topic, use UNCLEAR.
+
+    ---
+
+    Example 1 — SUPPORTED
+
+    Document: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It was constructed from 1887 to 1889."
+    Claim: "The Eiffel Tower is located in Paris."
+    {"label": "SUPPORTED", "confidence": 0.99, "reason": "The document explicitly states the Eiffel Tower is in Paris, France."}
+
+    ---
+
+    Example 2 — REFUTED
+
+    Document: "It was announced that the first concert would be pushed back by eight days to July 16, and three other July dates would be rescheduled for March 2010."
+    Claim: "The first concert was rescheduled for July 13."
+    {"label": "REFUTED", "confidence": 0.97, "reason": "The document states the concert was moved to July 16, directly contradicting the claim of July 13."}
+
+    ---
+
+    Example 3 — UNCLEAR
+
+    Document: "India is the 7th largest producer of hydroelectric power in the world. As of April 2017, India's installed utility-scale hydroelectric capacity was 44,594 MW."
+    Claim: "The Colorado River flows through the Grand Canyon."
+    {"label": "UNCLEAR", "confidence": 0.99, "reason": "The document is about hydroelectric power in India and does not address the claim about the Colorado River."}

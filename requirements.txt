@@ -1,0 +1,12 @@
+PyYAML
+pytest
+transformers==5
+torch
+pydantic
+json5
+ml-dtypes
+scikit-learn
+ipykernel
+accelerate
+litellm
+torch-c-dlpack-ext

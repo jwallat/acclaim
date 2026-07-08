@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>acclaim — Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <label class="select-label">
+        Run
+        <select id="run-select"></select>
+      </label>
+      <span class="run-badge" id="run-badge">—</span>
+      <label class="select-label">
+        Example
+        <select id="example-select"></select>
+      </label>
+      <button id="prev-btn" type="button">◀ Prev</button>
+      <button id="next-btn" type="button">Next ▶</button>
+      <span class="topbar-divider"></span>
+      <button id="ask-btn" type="button" class="ask-btn">Ask question</button>
+    </div>
+    <div class="topbar-right">
+      <label class="toggle-switch">
+        <span class="toggle-label">Highlight Citations</span>
+        <input type="checkbox" id="highlight-toggle" checked>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <button id="help-btn" type="button" title="Replay tutorial">?</button>
+      <button id="theme-btn" type="button"></button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="left-col">
+      <section class="chat-panel">
+        <div class="bubble user">
+          <div class="bubble-role">Question</div>
+          <div class="bubble-body" id="question-text">—</div>
+          <textarea id="question-input" class="question-input" rows="3" placeholder="Type your question…"></textarea>
+          <div class="ask-actions" id="ask-actions">
+            <button id="eval-btn" type="button">Evaluate</button>
+          </div>
+        </div>
+        <div class="bubble assistant">
+          <div class="bubble-role" id="answer-role">Answer</div>
+          <div class="bubble-body" id="answer-text">—</div>
+        </div>
+      </section>
+
+      <section class="docs-panel">
+        <h2>Cited documents</h2>
+        <div id="docs-list"></div>
+      </section>
+    </div>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <h2>Metrics</h2>
+        <table class="metrics-table" id="metrics-table">
+          <tbody></tbody>
+        </table>
+        <details class="batch-summary">
+          <summary>Batch aggregate</summary>
+          <table class="metrics-table" id="batch-metrics-table">
+            <tbody></tbody>
+          </table>
+        </details>
+      </div>
+
+      <div class="panel" id="claims-panel">
+        <h2>Claims <span class="count" id="claims-count"></span></h2>
+        <ul class="claims-list" id="claims-list"></ul>
+      </div>
+    </aside>
+  </main>
+
+  <div class="status" id="status"></div>
+  <script src="stopwords.js"></script>
+  <script src="metrics-meta.js"></script>
+  <script src="app.js"></script>
+  <script src="query.js"></script>
+  <script src="tutorial.js"></script>
+</body>
+
+</html>
