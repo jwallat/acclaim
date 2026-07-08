@@ -28,27 +28,26 @@ Metric computation ──► {"coverage": …, "hallucination_rate": …, "citat
 
 ## Installation
 
+
+**Simple usage:**
+
+```bash
+pip install acclaim
+```
+
 **From source (development):**
 
 ```bash
 pip install -e .
 ```
 
-**Once released:**
-
-```bash
-pip install acclaim
-```
-
-> **No PyTorch or HuggingFace models required.** The only runtime dependencies are `litellm`, `pydantic`, `pyyaml`, and `pysbd`.
-
 ### Environment setup
 
 Python 3.10+ is required. Using mamba or conda:
 
 ```bash
-mamba create -n attribution-eval python=3.10
-mamba activate attribution-eval
+mamba create -n acclaim python=3.10
+mamba activate acclaim
 pip install -e .
 ```
 
@@ -78,6 +77,12 @@ gitignored and never committed.
 ---
 
 ## Quick start
+
+The default config uses a Gemma 4 model from OpenRouter, so export the according API key:
+
+```shell
+export OPENROUTER_API_KEY=...
+```
 
 ```python
 from acclaim import evaluate, load_config, Document
