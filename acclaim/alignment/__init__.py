@@ -3,5 +3,11 @@
 from .base import CitationAligner
 from .sentence import SentenceCitationAligner
 from .jaccard import JaccardCitationAligner
+from .llm import LLMCitationAligner
 
-__all__ = ["CitationAligner", "SentenceCitationAligner", "JaccardCitationAligner"]
+__all__ = [
+    "CitationAligner",
+    "SentenceCitationAligner",
+    "JaccardCitationAligner",
+    "LLMCitationAligner",
+]

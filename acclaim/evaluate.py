@@ -24,6 +24,7 @@ from .claims.atomic import AtomicClaimExtractor
 from .alignment.base import CitationAligner
 from .alignment.sentence import SentenceCitationAligner
 from .alignment.jaccard import JaccardCitationAligner
+from .alignment.llm import LLMCitationAligner
 from ._version import __version__
 from .concurrency import parallel_map
 from .config.load import EvalConfig, config_to_dict, load_config
@@ -61,7 +62,14 @@ _CLAIM_EXTRACTOR_REGISTRY: dict[str, type[ClaimExtractor]] = {
 # ── Default aligner per extractor type ───────────────────────────────────────
 _DEFAULT_ALIGNER: dict[str, type[CitationAligner]] = {
     "sentence": SentenceCitationAligner,
-    "atomic": JaccardCitationAligner,
+    "atomic": LLMCitationAligner,
+}
+
+# ── Explicit aligner registry (for cfg.aligner overrides) ────────────────────
+_ALIGNER_REGISTRY: dict[str, type[CitationAligner]] = {
+    "sentence": SentenceCitationAligner,
+    "jaccard": JaccardCitationAligner,
+    "llm": LLMCitationAligner,
 }
 
 
@@ -222,11 +230,34 @@ def _build_aligner(
     cfg: EvalConfig,
     explicit_extractor: ClaimExtractor | None,
 ) -> CitationAligner:
-    # Use extractor type to pick the sensible default aligner
-    key = cfg.claim_extractor
-    aligner_cls = _DEFAULT_ALIGNER.get(key, SentenceCitationAligner)
+    if cfg.aligner is not None:
+        if cfg.aligner not in _ALIGNER_REGISTRY:
+            raise ValueError(
+                f"Unknown aligner {cfg.aligner!r}. Available: {list(_ALIGNER_REGISTRY)}"
+            )
+        aligner_cls = _ALIGNER_REGISTRY[cfg.aligner]
+    else:
+        # Use extractor type to pick the sensible default aligner
+        aligner_cls = _DEFAULT_ALIGNER.get(cfg.claim_extractor, SentenceCitationAligner)
+
     if aligner_cls is JaccardCitationAligner:
         return JaccardCitationAligner(weighted=cfg.jaccard_aligner.weighted)
+    if aligner_cls is LLMCitationAligner:
+        # Connection/sampling fields fall back to the main judge so users
+        # only need to configure one LLM endpoint; max_tokens/system_prompt
+        # are aligner-specific and never inherited from cfg.judge.
+        la = cfg.llm_aligner
+        j = cfg.judge
+        return LLMCitationAligner(
+            model=la.model if la.model is not None else j.model,
+            api_base=la.api_base if la.api_base is not None else j.api_base,
+            api_key=la.api_key if la.api_key is not None else j.api_key,
+            temperature=la.temperature if la.temperature is not None else j.temperature,
+            max_tokens=la.max_tokens,
+            max_retries=la.max_retries if la.max_retries is not None else j.max_retries,
+            thinking=la.thinking if la.thinking is not None else j.thinking,
+            system_prompt=la.system_prompt,
+        )
     return aligner_cls()
 
 

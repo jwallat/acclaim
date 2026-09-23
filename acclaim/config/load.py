@@ -37,6 +37,30 @@ class JaccardAlignerConfig:
 
 
 @dataclass
+class LLMAlignerConfig:
+    """
+    LiteLLM citation aligner configuration.
+
+    ``model``, ``api_base``, ``api_key``, ``temperature``, ``max_retries``,
+    and ``thinking`` default to ``None``, meaning "reuse the top-level
+    :attr:`~EvalConfig.judge` config" — so users only need to configure one
+    LLM endpoint. ``max_tokens`` and ``system_prompt`` are aligner-specific
+    (a batched alignment response needs headroom for many claims' worth of
+    JSON), so they carry their own standalone defaults instead of falling
+    back to :attr:`~EvalConfig.judge`.
+    """
+
+    model: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+    temperature: float | None = None
+    max_tokens: int = 2048
+    max_retries: int | None = None
+    thinking: bool | None = None
+    system_prompt: str | None = None
+
+
+@dataclass
 class ConcurrencyConfig:
     """Thread-pool concurrency configuration for LLM judge calls."""
 
@@ -105,6 +129,16 @@ class EvalConfig:
     """
 
     claim_extractor: str = "sentence"
+    aligner: str | None = None
+    """
+    Explicit aligner override: ``"sentence"``, ``"jaccard"``, or ``"llm"``.
+    ``None`` (default) picks the aligner implied by :attr:`claim_extractor`
+    (``sentence`` → :class:`~acclaim.alignment.sentence.SentenceCitationAligner`,
+    ``atomic`` → :class:`~acclaim.alignment.llm.LLMCitationAligner`). Set this
+    explicitly to force a specific aligner regardless of extractor — e.g. to
+    keep using :class:`~acclaim.alignment.jaccard.JaccardCitationAligner`
+    with ``atomic`` claims.
+    """
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     atomic_claim_extractor: AtomicClaimExtractorConfig = field(
         default_factory=AtomicClaimExtractorConfig
@@ -112,6 +146,8 @@ class EvalConfig:
     """Configuration for :class:`~acclaim.claims.atomic.AtomicClaimExtractor`. Only used when ``claim_extractor: atomic``."""
     jaccard_aligner: JaccardAlignerConfig = field(default_factory=JaccardAlignerConfig)
     """Configuration for :class:`~acclaim.alignment.jaccard.JaccardCitationAligner`. Only used when it is the selected aligner."""
+    llm_aligner: LLMAlignerConfig = field(default_factory=LLMAlignerConfig)
+    """Configuration for :class:`~acclaim.alignment.llm.LLMCitationAligner`. Only used when it is the selected aligner (the default for ``claim_extractor: atomic``)."""
     token_overlap: TokenOverlapConfig = field(default_factory=TokenOverlapConfig)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     metrics: list[str] = field(
@@ -312,11 +348,27 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
         weighted=jaccard_aligner_raw.get("weighted", True),
     )
 
+    llm_aligner_raw = raw.get("llm_aligner", {})
+    if not isinstance(llm_aligner_raw, dict):
+        llm_aligner_raw = {}
+    llm_aligner = LLMAlignerConfig(
+        model=_resolve(llm_aligner_raw.get("model")) or None,
+        api_base=_resolve(llm_aligner_raw.get("api_base")) or None,
+        api_key=_resolve(llm_aligner_raw.get("api_key")) or None,
+        temperature=llm_aligner_raw.get("temperature"),
+        max_tokens=llm_aligner_raw.get("max_tokens", 2048),
+        max_retries=llm_aligner_raw.get("max_retries"),
+        thinking=llm_aligner_raw.get("thinking"),
+        system_prompt=llm_aligner_raw.get("system_prompt") or None,
+    )
+
     return EvalConfig(
         claim_extractor=raw.get("claim_extractor", "sentence"),
+        aligner=raw.get("aligner") or None,
         judge=judge,
         atomic_claim_extractor=atomic_claim_extractor,
         jaccard_aligner=jaccard_aligner,
+        llm_aligner=llm_aligner,
         token_overlap=token_overlap,
         concurrency=concurrency,
         citation_recall_judge=citation_recall_judge,

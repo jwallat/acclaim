@@ -6,6 +6,16 @@
 # "atomic"   : LLM decomposes each sentence into sub-claims (slower, more precise)
 claim_extractor: atomic
 
+# ── Aligner override (optional) ─────────────────────────────────────────────
+# null (default) auto-selects the aligner based on claim_extractor above:
+#   "sentence" -> SentenceCitationAligner
+#   "atomic"   -> LLMCitationAligner
+# Set explicitly to "sentence" | "jaccard" | "llm" to force a specific one
+# regardless of claim_extractor — e.g. to keep using the older, free
+# JaccardCitationAligner (see "Jaccard citation aligner" section below) with
+# atomic claims instead of the LLM aligner.
+aligner: null
+
 # ── Evidence judge ────────────────────────────────────────────────────────────
 # model/max_tokens below mirror the best-performing config from the
 # library_evals/judges model comparison (see library_evals/judges/config.yaml).
@@ -79,9 +89,28 @@ atomic_claim_extractor:
   thinking: null
   system_prompt: null   # null keeps the extractor's built-in claim-decomposition prompt
 
-# ── Jaccard citation aligner ─────────────────────────────────────────────────
-# Only used when `claim_extractor: atomic` above (JaccardCitationAligner is
-# the auto-selected aligner for atomic claims).
+# ── LLM citation aligner ─────────────────────────────────────────────────────
+# The auto-selected aligner for atomic claims (see `aligner:` above). Asks the
+# LLM which citation numbers support each claim directly, then backfills
+# Claim.span via a citation-constrained sentence match. api_base/api_key/
+# temperature/max_retries/thinking default to null, meaning "reuse the
+# `judge:` config above". max_tokens and system_prompt are aligner-specific
+# (a batched multi-claim response needs its own headroom/prompt) and never
+# fall back to `judge:`.
+llm_aligner:
+  model: null
+  api_base: null
+  api_key: null
+  temperature: null
+  max_tokens: 2048
+  max_retries: null
+  thinking: null
+  system_prompt: null   # null keeps the aligner's built-in prompt
+
+# ── Jaccard citation aligner (legacy, opt-in) ────────────────────────────────
+# Only used when `aligner: jaccard` is set explicitly above — no longer the
+# default for atomic claims (LLMCitationAligner is), but kept available for
+# cost-conscious/offline runs.
 jaccard_aligner:
   # If true (default), weight tokens by inverse claim-frequency within the
   # same answer before computing Jaccard similarity. This corrects a bias
