@@ -135,6 +135,11 @@ def test_parse_config_claim_filters_and_check_worthiness():
     assert cfg.check_worthiness_filter.drop_categories == ["NOT_A_CLAIM"]
 
 
-def test_load_config_default_yaml_has_no_filters():
+def test_load_config_default_yaml_enables_check_worthiness():
     cfg = load_config()
-    assert cfg.claim_filters == []
+    assert cfg.claim_filters == ["check_worthiness"]
+
+
+def test_parse_config_claim_filters_explicitly_disabled():
+    assert _parse_config({"claim_filters": []}).claim_filters == []
+    assert _parse_config({"claim_filters": None}).claim_filters == []

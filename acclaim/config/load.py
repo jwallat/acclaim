@@ -173,8 +173,9 @@ class EvalConfig:
     claim_filters: list[str] = field(default_factory=list)
     """
     Names of claim filters to apply, in order, between claim extraction and
-    citation alignment (e.g. ``["check_worthiness"]``). Empty by default —
-    no filtering.
+    citation alignment (e.g. ``["check_worthiness"]``). The bundled
+    ``default.yaml`` enables ``check_worthiness``; the dataclass default and
+    custom YAML files without a ``claim_filters`` key use no filtering.
     """
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     atomic_claim_extractor: AtomicClaimExtractorConfig = field(

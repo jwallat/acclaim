@@ -6,17 +6,16 @@
 # "atomic"   : LLM decomposes each sentence into sub-claims (slower, more precise)
 claim_extractor: atomic
 
-# ── Claim filters (optional) ────────────────────────────────────────────────
+# ── Claim filters ────────────────────────────────────────────────────────────
 # Filters applied, in order, between claim extraction and citation alignment.
 # Dropped claims are excluded from alignment, judgement and all metrics; every
-# decision (with category/reason) is kept in result.steps["filter_decisions"].
-# Empty (default) = no filtering. Available:
+# decision (with category/reason) is kept in result.filter_decisions and in
+# the JSONL output. Set to [] to disable filtering. Available:
 #   check_worthiness : LLM classifies each claim (see `check_worthiness_filter:`
 #                      below) and drops non-claims, opinions, vague claims and
-#                      common knowledge.
-claim_filters: []
-# claim_filters:
-#   - check_worthiness
+#                      common knowledge. One batched LLM call per answer.
+claim_filters:
+  - check_worthiness
 
 # ── Check-worthiness filter ──────────────────────────────────────────────────
 # Only used when `check_worthiness` is listed in `claim_filters` above. The

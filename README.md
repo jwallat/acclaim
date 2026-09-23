@@ -15,7 +15,7 @@ answer text
 Claim extraction  ──► list[Claim]
     │
     ▼
-Claim filtering   ──► list[Claim]           (optional, e.g. drop non-check-worthy claims)
+Claim filtering   ──► list[Claim]           (drops non-check-worthy claims by default)
     │
     ▼
 Citation alignment ──► list[AlignedClaim]   (claim → cited doc IDs)
@@ -199,7 +199,7 @@ result = evaluate(
 
 ### Claim filtering
 
-Optionally drop claims before alignment, so they don't count toward any metric. Filters run in the order listed:
+Claims are filtered before alignment, so the dropped ones don't count toward any metric. The bundled `default.yaml` enables the `check_worthiness` filter. Set `claim_filters: []` to turn filtering off, or pass `claim_filters=[]` to `evaluate()`. Filters run in the order listed:
 
 ```yaml
 claim_filters:
