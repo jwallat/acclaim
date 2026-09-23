@@ -12,6 +12,7 @@ from acclaim.data_models import (
     Document,
     EvaluationMetadata,
     EvaluationResult,
+    FilterDecision,
     SupportLabel,
     SupportResult,
 )
@@ -98,7 +99,15 @@ def test_evaluation_result_to_jsonl_writes_single_line(tmp_path) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
     obj = json.loads(lines[0])
-    assert set(obj.keys()) == {"question", "answer", "documents", "claims", "metrics", "metadata"}
+    assert set(obj.keys()) == {
+        "question",
+        "answer",
+        "documents",
+        "claims",
+        "filter_decisions",
+        "metrics",
+        "metadata",
+    }
     assert obj["metrics"]["coverage"] == 1.0
     assert obj["question"] == "What is the capital of France?"
     assert obj["documents"] == [{"doc_id": "doc-1", "text": "Paris is the capital of France."}]
@@ -140,3 +149,75 @@ def test_batch_to_jsonl_can_omit_aggregate_line(tmp_path) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == len(items)
     assert all(json.loads(line)["record_type"] == "item" for line in lines)
+
+
+def _with_filter_decisions(result: EvaluationResult) -> EvaluationResult:
+    dropped = Claim(text="Great question!", span=(-1, -1))
+    result.filter_decisions = [
+        FilterDecision(
+            claim=result.claims[0].claim,
+            keep=True,
+            filter_name="check_worthiness",
+            category="QUANTITY",
+            reason="specific fact",
+        ),
+        FilterDecision(
+            claim=dropped,
+            keep=False,
+            filter_name="check_worthiness",
+            category="NOT_A_CLAIM",
+            reason="filler",
+        ),
+    ]
+    result.steps["claims"] = [result.claims[0].claim, dropped]
+    return result
+
+
+def test_to_dict_includes_filter_decisions() -> None:
+    d = _with_filter_decisions(_make_result()).to_dict()
+    assert d["filter_decisions"][1] == {
+        "claim": {"text": "Great question!", "span": [-1, -1]},
+        "keep": False,
+        "filter_name": "check_worthiness",
+        "category": "NOT_A_CLAIM",
+        "reason": "filler",
+    }
+
+
+def test_to_dict_filter_decisions_empty_without_filters() -> None:
+    assert _make_result().to_dict()["filter_decisions"] == []
+
+
+def test_pretty_print_lists_dropped_claims(capsys) -> None:
+    _with_filter_decisions(_make_result()).pretty_print()
+    out = capsys.readouterr().out
+    assert "Filtered out: 1" in out
+    assert "'Great question!'" in out
+    assert "check_worthiness/NOT_A_CLAIM" in out
+
+
+def test_pretty_print_omits_filter_section_without_drops(capsys) -> None:
+    _make_result().pretty_print()
+    assert "Filtered out" not in capsys.readouterr().out
+
+
+def test_batch_to_jsonl_writes_filter_summary(tmp_path) -> None:
+    batch = BatchEvaluationResult(
+        items=[_make_result(with_metadata=False)],
+        aggregate_metrics={"coverage": 1.0},
+        filter_summary={"claims_dropped": 1},
+    )
+    path = tmp_path / "batch.jsonl"
+    batch.to_jsonl(path)
+    agg = json.loads(path.read_text(encoding="utf-8").splitlines()[-1])
+    assert agg["filter_summary"] == {"claims_dropped": 1}
+
+
+def test_batch_to_jsonl_omits_filter_summary_when_none(tmp_path) -> None:
+    batch = BatchEvaluationResult(
+        items=[_make_result(with_metadata=False)], aggregate_metrics={"coverage": 1.0}
+    )
+    path = tmp_path / "batch.jsonl"
+    batch.to_jsonl(path)
+    agg = json.loads(path.read_text(encoding="utf-8").splitlines()[-1])
+    assert "filter_summary" not in agg

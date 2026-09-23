@@ -14,6 +14,8 @@ from typing import Any
 
 import yaml
 
+from ..filters.check_worthiness import DEFAULT_DROP_CATEGORIES
+
 
 @dataclass
 class TokenOverlapConfig:
@@ -58,6 +60,35 @@ class LLMAlignerConfig:
     max_retries: int | None = None
     thinking: bool | None = None
     system_prompt: str | None = None
+
+
+@dataclass
+class CheckWorthinessFilterConfig:
+    """
+    LiteLLM check-worthiness claim filter configuration.
+
+    ``model``, ``api_base``, ``api_key``, ``temperature``, ``max_retries``,
+    and ``thinking`` default to ``None``, meaning "reuse the top-level
+    :attr:`~EvalConfig.judge` config". ``max_tokens`` and ``system_prompt``
+    are filter-specific and never fall back to :attr:`~EvalConfig.judge`.
+    """
+
+    model: str | None = None
+    api_base: str | None = None
+    api_key: str | None = None
+    temperature: float | None = None
+    max_tokens: int = 2048
+    max_retries: int | None = None
+    thinking: bool | None = None
+    system_prompt: str | None = None
+    drop_categories: list[str] = field(
+        default_factory=lambda: [c.value for c in DEFAULT_DROP_CATEGORIES]
+    )
+    """
+    :class:`~acclaim.filters.check_worthiness.ClaimCategory` names whose
+    claims are dropped. Defaults to NOT_A_CLAIM, SUBJECTIVE, UNDERSPECIFIED
+    and COMMON_KNOWLEDGE.
+    """
 
 
 @dataclass
@@ -139,6 +170,12 @@ class EvalConfig:
     keep using :class:`~acclaim.alignment.jaccard.JaccardCitationAligner`
     with ``atomic`` claims.
     """
+    claim_filters: list[str] = field(default_factory=list)
+    """
+    Names of claim filters to apply, in order, between claim extraction and
+    citation alignment (e.g. ``["check_worthiness"]``). Empty by default —
+    no filtering.
+    """
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     atomic_claim_extractor: AtomicClaimExtractorConfig = field(
         default_factory=AtomicClaimExtractorConfig
@@ -148,13 +185,14 @@ class EvalConfig:
     """Configuration for :class:`~acclaim.alignment.jaccard.JaccardCitationAligner`. Only used when it is the selected aligner."""
     llm_aligner: LLMAlignerConfig = field(default_factory=LLMAlignerConfig)
     """Configuration for :class:`~acclaim.alignment.llm.LLMCitationAligner`. Only used when it is the selected aligner (the default for ``claim_extractor: atomic``)."""
+    check_worthiness_filter: CheckWorthinessFilterConfig = field(
+        default_factory=CheckWorthinessFilterConfig
+    )
+    """Configuration for :class:`~acclaim.filters.check_worthiness.LLMCheckWorthinessFilter`. Only used when ``"check_worthiness"`` is in :attr:`claim_filters`."""
     token_overlap: TokenOverlapConfig = field(default_factory=TokenOverlapConfig)
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     metrics: list[str] = field(
         default_factory=lambda: [
-            "citation_precision",
-            "citation_recall",
-            "citation_f1",
             "citation_correctness",
             "citation_lengths",
             "citation_number",
@@ -362,9 +400,31 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
         system_prompt=llm_aligner_raw.get("system_prompt") or None,
     )
 
+    check_worthiness_filter_raw = raw.get("check_worthiness_filter", {})
+    if not isinstance(check_worthiness_filter_raw, dict):
+        check_worthiness_filter_raw = {}
+    drop_categories = check_worthiness_filter_raw.get("drop_categories")
+    check_worthiness_filter = CheckWorthinessFilterConfig(
+        model=_resolve(check_worthiness_filter_raw.get("model")) or None,
+        api_base=_resolve(check_worthiness_filter_raw.get("api_base")) or None,
+        api_key=_resolve(check_worthiness_filter_raw.get("api_key")) or None,
+        temperature=check_worthiness_filter_raw.get("temperature"),
+        max_tokens=check_worthiness_filter_raw.get("max_tokens", 2048),
+        max_retries=check_worthiness_filter_raw.get("max_retries"),
+        thinking=check_worthiness_filter_raw.get("thinking"),
+        system_prompt=check_worthiness_filter_raw.get("system_prompt") or None,
+        drop_categories=(
+            list(drop_categories)
+            if drop_categories is not None
+            else [c.value for c in DEFAULT_DROP_CATEGORIES]
+        ),
+    )
+
     return EvalConfig(
         claim_extractor=raw.get("claim_extractor", "sentence"),
         aligner=raw.get("aligner") or None,
+        claim_filters=raw.get("claim_filters") or [],
+        check_worthiness_filter=check_worthiness_filter,
         judge=judge,
         atomic_claim_extractor=atomic_claim_extractor,
         jaccard_aligner=jaccard_aligner,
@@ -378,9 +438,6 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
         metrics=raw.get(
             "metrics",
             [
-                "citation_precision",
-                "citation_recall",
-                "citation_f1",
                 "citation_correctness",
                 "citation_lengths",
                 "citation_number",

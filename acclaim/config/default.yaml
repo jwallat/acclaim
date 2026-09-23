@@ -6,6 +6,44 @@
 # "atomic"   : LLM decomposes each sentence into sub-claims (slower, more precise)
 claim_extractor: atomic
 
+# ── Claim filters (optional) ────────────────────────────────────────────────
+# Filters applied, in order, between claim extraction and citation alignment.
+# Dropped claims are excluded from alignment, judgement and all metrics; every
+# decision (with category/reason) is kept in result.steps["filter_decisions"].
+# Empty (default) = no filtering. Available:
+#   check_worthiness : LLM classifies each claim (see `check_worthiness_filter:`
+#                      below) and drops non-claims, opinions, vague claims and
+#                      common knowledge.
+claim_filters: []
+# claim_filters:
+#   - check_worthiness
+
+# ── Check-worthiness filter ──────────────────────────────────────────────────
+# Only used when `check_worthiness` is listed in `claim_filters` above. The
+# LLM assigns each claim one category; claims whose category is listed in
+# `drop_categories` are removed. Categories:
+#   not check-worthy: NOT_A_CLAIM, SUBJECTIVE, UNDERSPECIFIED, COMMON_KNOWLEDGE
+#   check-worthy:     QUANTITY, EVENT_OR_HISTORICAL, ATTRIBUTION_OR_QUOTE,
+#                     CAUSAL_OR_CORRELATION, SCIENTIFIC_OR_TECHNICAL,
+#                     RULE_OR_POLICY, PREDICTION, OTHER_FACTUAL
+# api_base/api_key/temperature/max_retries/thinking default to null, meaning
+# "reuse the `judge:` config above". max_tokens and system_prompt are
+# filter-specific and never fall back to `judge:`.
+check_worthiness_filter:
+  model: null
+  api_base: null
+  api_key: null
+  temperature: null
+  max_tokens: 2048
+  max_retries: null
+  thinking: null
+  system_prompt: null   # null keeps the filter's built-in classification prompt
+  drop_categories:
+    - NOT_A_CLAIM
+    - SUBJECTIVE
+    - UNDERSPECIFIED
+    - COMMON_KNOWLEDGE
+
 # ── Aligner override (optional) ─────────────────────────────────────────────
 # null (default) auto-selects the aligner based on claim_extractor above:
 #   "sentence" -> SentenceCitationAligner
@@ -131,10 +169,14 @@ concurrency:
   max_workers: 10
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
+# citation_precision / citation_recall / citation_f1 are opt-in: they run
+# their own LLM judges (one call per claim-citation pair for precision, one
+# per claim for recall) on top of the evidence judge, which makes them by far
+# the most expensive metrics. Add them to the list below to enable them:
+#   - citation_precision
+#   - citation_recall
+#   - citation_f1
 metrics:
-  - citation_precision
-  - citation_recall
-  - citation_f1
   - citation_correctness
   - citation_lengths
   - citation_number

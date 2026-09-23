@@ -15,13 +15,16 @@ answer text
 Claim extraction  ──► list[Claim]
     │
     ▼
+Claim filtering   ──► list[Claim]           (optional, e.g. drop non-check-worthy claims)
+    │
+    ▼
 Citation alignment ──► list[AlignedClaim]   (claim → cited doc IDs)
     │
     ▼
 Evidence judgement ──► list[ClaimResult]    (SUPPORTED / REFUTED / UNCLEAR)
     │
     ▼
-Metric computation ──► {"coverage": …, "hallucination_rate": …, "citation_f1": …, …}
+Metric computation ──► {"coverage": …, "hallucination_rate": …, "citation_correctness": …, …}
 ```
 
 ---
@@ -99,7 +102,7 @@ result = evaluate(answer, documents, config=config)
 
 result.pretty_print()
 print(result.metrics)
-# {"citation_precision": 0.5, "citation_recall": 1.0, "citation_f1": 0.67, "coverage": 1.0, "hallucination_rate": 0.0, ...}
+# {"citation_correctness": 0.5, "coverage": 1.0, "hallucination_rate": 0.0, ...}
 ```
 
 The pipeline stages are available for inspection via `result.steps`:
@@ -145,11 +148,9 @@ judge:
   max_tokens: 512
   max_retries: 3
 
-# Metrics to compute
+# Metrics to compute. citation_precision / citation_recall / citation_f1
+# are opt-in because they run extra LLM judges; add them here to enable.
 metrics:
-  - citation_precision
-  - citation_recall
-  - citation_f1
   - citation_correctness
   - citation_lengths
   - citation_number
@@ -194,6 +195,54 @@ result = evaluate(
     citation_to_doc={1: "doc_paris", 2: "doc_eiffel"},
     config=config,
 )
+```
+
+### Claim filtering
+
+Optionally drop claims before alignment, so they don't count toward any metric. Filters run in the order listed:
+
+```yaml
+claim_filters:
+  - check_worthiness
+
+check_worthiness_filter:
+  model: null              # null = reuse judge.model
+  drop_categories: [NOT_A_CLAIM, SUBJECTIVE, UNDERSPECIFIED, COMMON_KNOWLEDGE]
+```
+
+`check_worthiness` asks an LLM to put each claim into one category:
+
+- **Dropped by default:** `NOT_A_CLAIM`, `SUBJECTIVE`, `UNDERSPECIFIED`, `COMMON_KNOWLEDGE`
+- **Kept:** `QUANTITY`, `EVENT_OR_HISTORICAL`, `ATTRIBUTION_OR_QUOTE`, `CAUSAL_OR_CORRELATION`, `SCIENTIFIC_OR_TECHNICAL`, `RULE_OR_POLICY`, `PREDICTION`, `OTHER_FACTUAL`
+
+The categories draw on ClaimBuster, the Full Fact claim schema, Wikipedia's *Citation Needed* taxonomy, and VeriScore. If the LLM call fails, the filter keeps all claims.
+
+Every decision (kept and dropped, with category and reason) is available as `result.filter_decisions` and is written to `to_dict()` / `to_jsonl()` output by default. `pretty_print()` lists the dropped claims. For `evaluate_batch()`, `result.filter_summary` (also written to the JSONL aggregate line) holds claim counts, the drop rate, and kept/dropped counts per category:
+
+```python
+result = evaluate_batch(examples, config=config)
+result.filter_summary
+# {"claims_extracted": 595, "claims_kept": 545, "claims_dropped": 50, "drop_rate": 0.084,
+#  "items_with_drops": 24, "items_all_dropped": 1,
+#  "by_filter": {"check_worthiness": {"seen": 595, "dropped": 50,
+#                "categories": {"SUBJECTIVE": {"kept": 0, "dropped": 33}, ...}}}}
+```
+
+To write a custom filter, subclass `ClaimFilter` and pass it directly:
+
+```python
+from acclaim.filters import ClaimFilter, FilterDecision
+
+class MinLengthFilter(ClaimFilter):
+    name = "min_length"
+
+    def decide(self, claims, answer, question=None):
+        return [
+            FilterDecision(claim=c, keep=len(c.text.split()) >= 4, filter_name=self.name)
+            for c in claims
+        ]
+
+result = evaluate(answer, documents, claim_filters=[MinLengthFilter()])
 ```
 
 ---
@@ -243,6 +292,8 @@ sbatch --gpus=1 run_e2e_tests.sh
 
 ## Metrics
 
+`citation_precision`, `citation_recall` and `citation_f1` are not in the default `metrics:` list because they make extra LLM calls on top of the evidence judge. Add them to your config to enable them.
+
 | Metric key | Description |
 |---|---|
 | `citation_precision` | Mean per-citation score from an LLM judge assessing whether each cited snippet is relevant to the claim it supports (LongCite-style) |
@@ -271,6 +322,9 @@ acclaim/
 ├── claims/              Claim extraction strategies
 │   ├── sentence.py      SentenceClaimExtractor (default, no LLM)
 │   └── atomic.py        AtomicClaimExtractor (LLM-based)
+├── filters/             Optional claim filters (between extraction and alignment)
+│   ├── base.py          ClaimFilter / FilterDecision
+│   └── check_worthiness.py  LLMCheckWorthinessFilter + ClaimCategory taxonomy
 ├── alignment/           Citation alignment strategies
 │   ├── sentence.py      SentenceCitationAligner (auto-selected for sentence claims)
 │   └── jaccard.py       JaccardCitationAligner (auto-selected for atomic claims)

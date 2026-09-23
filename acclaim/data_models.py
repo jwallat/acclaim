@@ -84,6 +84,26 @@ class Claim:
 
 
 @dataclass(frozen=True)
+class FilterDecision:
+    """
+    A claim filter's verdict on a single claim.
+
+    Attributes:
+        claim:       The claim the decision is about (never rewritten).
+        keep:        Whether the claim passes the filter.
+        filter_name: Name of the filter that decided (e.g. ``"check_worthiness"``).
+        category:    Optional filter-specific label (e.g. ``"COMMON_KNOWLEDGE"``).
+        reason:      Optional free-text justification.
+    """
+
+    claim: Claim
+    keep: bool
+    filter_name: str
+    category: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
 class AlignedClaim:
     """A claim paired with the document IDs it cites."""
 
@@ -123,10 +143,12 @@ class EvaluationResult:
     Top-level output of evaluate().
 
     Attributes:
-        claims:    Per-claim evaluation results.
+        claims:    Per-claim evaluation results (only claims that passed all
+                   claim filters).
         metrics:   Aggregated metric scores keyed by metric name.
         steps:     Intermediate pipeline outputs for debugging/inspection.
-                   Keys: "claims", "aligned_claims", "claim_results".
+                   Keys: "claims", "filtered_claims", "filter_decisions",
+                   "aligned_claims", "claim_results", "citation_to_doc".
         metadata:  Package version and config used for this run. ``None`` when
                    this result is an item inside a ``BatchEvaluationResult``,
                    where the same metadata is instead attached once at the
@@ -134,6 +156,9 @@ class EvaluationResult:
         question:  The original question the answer was responding to, if any.
         answer:    The raw answer text that was evaluated.
         documents: The source documents the answer was evaluated against.
+        filter_decisions: One :class:`FilterDecision` per claim seen by each
+                   configured claim filter (kept and dropped), in pipeline
+                   order. Empty when no claim filters are configured.
     """
 
     claims: list[ClaimResult]
@@ -143,6 +168,7 @@ class EvaluationResult:
     question: str | None = None
     answer: str | None = None
     documents: list[Document] = field(default_factory=list)
+    filter_decisions: list[FilterDecision] = field(default_factory=list)
 
     def pretty_print(self) -> None:
         """Print a human-readable summary of the evaluation result."""
@@ -157,6 +183,16 @@ class EvaluationResult:
                 f"    Verdict:   {cr.support.label.value}  (confidence={cr.support.confidence:.2f})"
             )
             print(f"    Reason:    {cr.support.reason}")
+        dropped = [d for d in self.filter_decisions if not d.keep]
+        if dropped:
+            print()
+            print(f"Filtered out: {len(dropped)}")
+            for d in dropped:
+                label = f"{d.filter_name}/{d.category}" if d.category else d.filter_name
+                print(f"  {d.claim.text!r}")
+                print(f"    Filter:    {label}")
+                if d.reason:
+                    print(f"    Reason:    {d.reason}")
         print()
         print("Metrics:")
         for name, value in self.metrics.items():
@@ -175,6 +211,7 @@ class EvaluationResult:
             "answer": self.answer,
             "documents": _to_jsonable(self.documents),
             "claims": _to_jsonable(self.claims),
+            "filter_decisions": _to_jsonable(self.filter_decisions),
             "metrics": self.metrics,
             "metadata": _to_jsonable(self.metadata) if self.metadata else None,
         }
@@ -203,11 +240,18 @@ class BatchExample:
 
 @dataclass
 class BatchEvaluationResult:
-    """Batch evaluation outputs with per-item and aggregate metrics."""
+    """
+    Batch evaluation outputs with per-item and aggregate metrics.
+
+    ``filter_summary`` aggregates the items' claim-filter decisions (claim
+    counts, drop rate, per-category kept/dropped counts). It is ``None``
+    when no claim filters ran.
+    """
 
     items: list[EvaluationResult]
     aggregate_metrics: dict[str, float]
     metadata: EvaluationMetadata | None = None
+    filter_summary: dict[str, Any] | None = None
 
     def to_jsonl(
         self,
@@ -239,4 +283,6 @@ class BatchEvaluationResult:
                     "aggregate_metrics": self.aggregate_metrics,
                     "metadata": metadata_dict,
                 }
+                if self.filter_summary is not None:
+                    agg_line["filter_summary"] = self.filter_summary
                 fh.write(json.dumps(agg_line, ensure_ascii=False) + "\n")

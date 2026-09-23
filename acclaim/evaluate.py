@@ -6,6 +6,7 @@ Entry point: :func:`evaluate`.
 Pipeline stages
 ---------------
 1. **Claim extraction** — split the answer into claims
+1b. **Claim filtering** (optional) — drop claims that need no verification
 2. **Citation alignment** — map each claim to its cited document IDs
 3. **Evidence judgement** — verify each claim against its documents
 4. **Metric computation** — aggregate scalar scores
@@ -25,6 +26,8 @@ from .alignment.base import CitationAligner
 from .alignment.sentence import SentenceCitationAligner
 from .alignment.jaccard import JaccardCitationAligner
 from .alignment.llm import LLMCitationAligner
+from .filters.base import ClaimFilter
+from .filters.check_worthiness import LLMCheckWorthinessFilter
 from ._version import __version__
 from .concurrency import parallel_map
 from .config.load import EvalConfig, config_to_dict, load_config
@@ -35,6 +38,7 @@ from .data_models import (
     Document,
     EvaluationMetadata,
     EvaluationResult,
+    FilterDecision,
 )
 from .judges.base import EvidenceJudge
 from .judges.citation_precision import LiteLLMPrecisionJudge, PrecisionJudge
@@ -72,6 +76,11 @@ _ALIGNER_REGISTRY: dict[str, type[CitationAligner]] = {
     "llm": LLMCitationAligner,
 }
 
+# ── Claim-filter registry (for cfg.claim_filters) ────────────────────────────
+_CLAIM_FILTER_REGISTRY: dict[str, type[ClaimFilter]] = {
+    "check_worthiness": LLMCheckWorthinessFilter,
+}
+
 
 def evaluate(
     answer: str,
@@ -82,6 +91,7 @@ def evaluate(
     config: EvalConfig | None = None,
     # Fine-grained overrides (rarely needed — use config instead)
     claim_extractor: ClaimExtractor | None = None,
+    claim_filters: list[ClaimFilter] | None = None,
     aligner: CitationAligner | None = None,
     judge: EvidenceJudge | None = None,
     _inner_max_workers: int | None = None,
@@ -104,6 +114,8 @@ def evaluate(
         config:          :class:`~acclaim.config.load.EvalConfig` instance.
                          Defaults to :func:`~acclaim.config.load.load_config`.
         claim_extractor: Override the extractor strategy directly.
+        claim_filters:   Override the claim filters directly (applied in
+                         order); ``[]`` disables filtering.
         aligner:         Override the aligner strategy directly.
         judge:           Override the judge strategy directly.
 
@@ -131,9 +143,29 @@ def evaluate(
     claims = extractor.extract(answer_obj)
     logger.info("Extracted %d claims", len(claims))
 
+    # ── Stage 1b: Claim filtering (optional) ──────────────────────────────────
+    filters = claim_filters if claim_filters is not None else _build_filters(cfg)
+    filtered_claims = claims
+    filter_decisions: list[FilterDecision] = []
+    for claim_filter in filters:
+        decisions = claim_filter.decide(filtered_claims, answer, question)
+        filter_decisions.extend(decisions)
+        for d in decisions:
+            if not d.keep:
+                logger.info(
+                    "Filter %s dropped claim %r (%s: %s)",
+                    d.filter_name,
+                    d.claim.text,
+                    d.category,
+                    d.reason,
+                )
+        filtered_claims = [d.claim for d in decisions if d.keep]
+    if filters:
+        logger.info("Kept %d of %d claims after filtering", len(filtered_claims), len(claims))
+
     # ── Stage 2: Citation alignment ───────────────────────────────────────────
     aligner_obj = aligner or _build_aligner(cfg, claim_extractor)
-    aligned_claims = aligner_obj.align(claims, answer, citation_to_doc)
+    aligned_claims = aligner_obj.align(filtered_claims, answer, citation_to_doc)
     logger.info("Aligned %d claims to citations", len(aligned_claims))
 
     # ── Stage 3: Evidence judgement ───────────────────────────────────────────
@@ -182,6 +214,8 @@ def evaluate(
         metrics=metrics,
         steps={
             "claims": claims,
+            "filtered_claims": filtered_claims,
+            "filter_decisions": filter_decisions,
             "aligned_claims": aligned_claims,
             "claim_results": claim_results,
             "citation_to_doc": citation_to_doc,
@@ -190,6 +224,7 @@ def evaluate(
         question=question,
         answer=answer,
         documents=documents,
+        filter_decisions=filter_decisions,
     )
 
 
@@ -224,6 +259,36 @@ def _build_extractor(cfg: EvalConfig) -> ClaimExtractor:
         )
 
     return cls()
+
+
+def _build_filters(cfg: EvalConfig) -> list[ClaimFilter]:
+    filters: list[ClaimFilter] = []
+    for key in cfg.claim_filters:
+        if key not in _CLAIM_FILTER_REGISTRY:
+            raise ValueError(
+                f"Unknown claim filter {key!r}. Available: {list(_CLAIM_FILTER_REGISTRY)}"
+            )
+        if key == "check_worthiness":
+            # Connection/sampling fields fall back to the main judge;
+            # max_tokens/system_prompt are filter-specific.
+            cw = cfg.check_worthiness_filter
+            j = cfg.judge
+            filters.append(
+                LLMCheckWorthinessFilter(
+                    model=cw.model if cw.model is not None else j.model,
+                    api_base=cw.api_base if cw.api_base is not None else j.api_base,
+                    api_key=cw.api_key if cw.api_key is not None else j.api_key,
+                    temperature=cw.temperature if cw.temperature is not None else j.temperature,
+                    max_tokens=cw.max_tokens,
+                    max_retries=cw.max_retries if cw.max_retries is not None else j.max_retries,
+                    thinking=cw.thinking if cw.thinking is not None else j.thinking,
+                    system_prompt=cw.system_prompt,
+                    drop_categories=cw.drop_categories,
+                )
+            )
+        else:
+            filters.append(_CLAIM_FILTER_REGISTRY[key]())
+    return filters
 
 
 def _build_aligner(

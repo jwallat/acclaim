@@ -104,3 +104,37 @@ def test_config_to_dict_redacts_nested_judge_overrides():
     cfg = EvalConfig(citation_recall_judge=JudgeConfig(api_key="another-secret"))
     d = config_to_dict(cfg)
     assert d["citation_recall_judge"]["api_key"] == "***REDACTED***"
+
+
+def test_parse_config_claim_filters_default_empty():
+    cfg = _parse_config({})
+    assert cfg.claim_filters == []
+    assert cfg.check_worthiness_filter.model is None
+    assert cfg.check_worthiness_filter.drop_categories == [
+        "NOT_A_CLAIM",
+        "SUBJECTIVE",
+        "UNDERSPECIFIED",
+        "COMMON_KNOWLEDGE",
+    ]
+
+
+def test_parse_config_claim_filters_and_check_worthiness():
+    cfg = _parse_config(
+        {
+            "claim_filters": ["check_worthiness"],
+            "check_worthiness_filter": {
+                "model": "filter-model",
+                "max_tokens": 1000,
+                "drop_categories": ["NOT_A_CLAIM"],
+            },
+        }
+    )
+    assert cfg.claim_filters == ["check_worthiness"]
+    assert cfg.check_worthiness_filter.model == "filter-model"
+    assert cfg.check_worthiness_filter.max_tokens == 1000
+    assert cfg.check_worthiness_filter.drop_categories == ["NOT_A_CLAIM"]
+
+
+def test_load_config_default_yaml_has_no_filters():
+    cfg = load_config()
+    assert cfg.claim_filters == []
