@@ -109,9 +109,19 @@ class ConcurrencyConfig:
 _DEFAULT_YAML = Path(__file__).parent / "default.yaml"
 
 
+JUDGE_BACKENDS = ("chat", "decision")
+
+
 @dataclass
 class JudgeConfig:
-    """LiteLLM judge configuration."""
+    """
+    Judge configuration.
+
+    ``backend: chat`` (default) prompts a chat LLM via LiteLLM.
+    ``backend: decision`` uses a decision model (OpenRouter Decisions /
+    System One API) instead; ``temperature``, ``max_tokens``, ``thinking``
+    and ``system_prompt`` are then ignored and the ``decision_*`` fields apply.
+    """
 
     model: str = "gpt-4o-mini"
     api_base: str | None = None
@@ -121,6 +131,19 @@ class JudgeConfig:
     max_retries: int = 3
     thinking: bool = False
     system_prompt: str | None = None
+    backend: str = "chat"
+    decision_mode: str = "choice"
+    """Decision backend only: ``"choice"``, ``"noul"`` or ``"score"``."""
+    decision_thresholds: dict[str, float] | None = None
+    """Decision backend, ``noul`` mode only: ``{"supported": t, "refuted": t}``."""
+    decision_state_format: str = "structured"
+    """Decision backend only: ``"structured"`` (JSON object) or ``"text"``."""
+
+    def __post_init__(self) -> None:
+        if self.backend not in JUDGE_BACKENDS:
+            raise ValueError(
+                f"Unknown judge backend {self.backend!r}. Available: {list(JUDGE_BACKENDS)}"
+            )
 
 
 @dataclass
@@ -313,25 +336,6 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
             return os.environ.get(value[2:-1])
         return value
 
-    judge = JudgeConfig(
-        model=_resolve(judge_raw.get("model", "gpt-4o-mini")),
-        api_base=_resolve(judge_raw.get("api_base")) or None,
-        api_key=_resolve(judge_raw.get("api_key")) or None,
-        temperature=judge_raw.get("temperature", 0.0),
-        max_tokens=judge_raw.get("max_tokens", 512),
-        max_retries=judge_raw.get("max_retries", 3),
-        thinking=judge_raw.get("thinking", False),
-        system_prompt=judge_raw.get("system_prompt") or None,
-    )
-
-    token_overlap = TokenOverlapConfig(
-        log_similarities=token_overlap_raw.get("log_similarities", False),
-    )
-
-    concurrency = ConcurrencyConfig(
-        max_workers=concurrency_raw.get("max_workers", 1),
-    )
-
     def _parse_judge_override(raw_section: dict) -> JudgeConfig:
         return JudgeConfig(
             model=_resolve(raw_section.get("model", "gpt-4o-mini")),
@@ -342,7 +346,21 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
             max_retries=raw_section.get("max_retries", 3),
             thinking=raw_section.get("thinking", False),
             system_prompt=raw_section.get("system_prompt") or None,
+            backend=raw_section.get("backend") or "chat",
+            decision_mode=raw_section.get("decision_mode") or "choice",
+            decision_thresholds=raw_section.get("decision_thresholds") or None,
+            decision_state_format=raw_section.get("decision_state_format") or "structured",
         )
+
+    judge = _parse_judge_override(judge_raw)
+
+    token_overlap = TokenOverlapConfig(
+        log_similarities=token_overlap_raw.get("log_similarities", False),
+    )
+
+    concurrency = ConcurrencyConfig(
+        max_workers=concurrency_raw.get("max_workers", 1),
+    )
 
     # Optional per-metric judge overrides
     recall_judge_raw = raw.get("citation_recall_judge")

@@ -56,6 +56,22 @@ aligner: null
 # ── Evidence judge ────────────────────────────────────────────────────────────
 # model/max_tokens below mirror the best-performing config from the
 # library_evals/judges model comparison (see library_evals/judges/config.yaml).
+#
+# Decision models: set `backend: decision` to use a decision model
+# (OpenRouter Decisions API) instead of a chat LLM. temperature, max_tokens,
+# thinking and system_prompt are then ignored. Chat-only components
+# (atomic_claim_extractor, check_worthiness_filter, llm_aligner) can no
+# longer inherit `judge.model` and need their own explicit `model`.
+#
+#   judge:
+#     backend: decision
+#     model: openrouter/typesafe/jev-1.13
+#     api_key: ${OPENROUTER_API_KEY}
+#     decision_mode: choice            # choice | noul | score
+#     decision_state_format: structured  # structured | text
+#     decision_thresholds:             # noul mode only
+#       supported: 0.5
+#       refuted: 0.5
 judge:
   model: openrouter/google/gemma-4-26b-a4b-it
   api_base: null          # Set to e.g. "http://localhost:8000/v1" for local vLLM

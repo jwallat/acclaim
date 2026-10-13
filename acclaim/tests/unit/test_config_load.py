@@ -143,3 +143,37 @@ def test_load_config_default_yaml_enables_check_worthiness():
 def test_parse_config_claim_filters_explicitly_disabled():
     assert _parse_config({"claim_filters": []}).claim_filters == []
     assert _parse_config({"claim_filters": None}).claim_filters == []
+
+
+def test_parse_config_judge_backend_defaults_to_chat():
+    cfg = _parse_config({})
+    assert cfg.judge.backend == "chat"
+    assert cfg.judge.decision_mode == "choice"
+    assert cfg.judge.decision_thresholds is None
+    assert cfg.judge.decision_state_format == "structured"
+
+
+def test_parse_config_decision_backend_fields():
+    raw = {
+        "judge": {
+            "backend": "decision",
+            "model": "openrouter/typesafe/jev-1.13",
+            "decision_mode": "noul",
+            "decision_thresholds": {"supported": 0.6},
+            "decision_state_format": "text",
+        },
+        "relevance_judge": {"backend": "decision", "model": "openrouter/x/y"},
+    }
+    cfg = _parse_config(raw)
+    assert cfg.judge.backend == "decision"
+    assert cfg.judge.decision_mode == "noul"
+    assert cfg.judge.decision_thresholds == {"supported": 0.6}
+    assert cfg.judge.decision_state_format == "text"
+    assert cfg.relevance_judge.backend == "decision"
+
+
+def test_unknown_judge_backend_raises():
+    with pytest.raises(ValueError, match="Unknown judge backend"):
+        _parse_config({"judge": {"backend": "oracle"}})
+    with pytest.raises(ValueError, match="Unknown judge backend"):
+        JudgeConfig(backend="oracle")

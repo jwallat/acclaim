@@ -30,7 +30,7 @@ from .filters.base import ClaimFilter
 from .filters.check_worthiness import LLMCheckWorthinessFilter
 from ._version import __version__
 from .concurrency import parallel_map
-from .config.load import EvalConfig, config_to_dict, load_config
+from .config.load import EvalConfig, JudgeConfig, config_to_dict, load_config
 from .data_models import (
     AlignedClaim,
     Answer,
@@ -43,6 +43,7 @@ from .data_models import (
 from .judges.base import EvidenceJudge
 from .judges.citation_precision import LiteLLMPrecisionJudge, PrecisionJudge
 from .judges.citation_recall import LiteLLMRecallJudge, RecallJudge
+from .judges.decision import DecisionJudge
 from .judges.litellm import LiteLLMJudge
 from .judges.relevance import LiteLLMRelevanceJudge, RelevanceJudge
 from .metrics.base import Metric
@@ -233,6 +234,31 @@ def evaluate(
 # ---------------------------------------------------------------------------
 
 
+def _chat_model_fallback(cfg: EvalConfig, section: str, model: str | None) -> str:
+    """
+    Return *model*, or fall back to ``cfg.judge.model`` for chat-only components.
+
+    Raises if the fallback would hand a decision model to a component that
+    needs a text-generating chat LLM.
+    """
+    if model is not None:
+        return model
+    if cfg.judge.backend != "chat":
+        raise ValueError(
+            f"`judge` uses backend {cfg.judge.backend!r}, which {section} cannot "
+            f"inherit; set an explicit chat `model` in the `{section}` config section."
+        )
+    return cfg.judge.model
+
+
+def _require_chat_backend(j: JudgeConfig, section: str) -> None:
+    if j.backend != "chat":
+        raise NotImplementedError(
+            f"Backend {j.backend!r} is not yet supported for {section}; "
+            f"set a chat model in the `{section}` config section."
+        )
+
+
 def _build_extractor(cfg: EvalConfig) -> ClaimExtractor:
     key = cfg.claim_extractor
     if key not in _CLAIM_EXTRACTOR_REGISTRY:
@@ -248,7 +274,7 @@ def _build_extractor(cfg: EvalConfig) -> ClaimExtractor:
         ac = cfg.atomic_claim_extractor
         j = cfg.judge
         return AtomicClaimExtractor(
-            model=ac.model if ac.model is not None else j.model,
+            model=_chat_model_fallback(cfg, "atomic_claim_extractor", ac.model),
             api_base=ac.api_base if ac.api_base is not None else j.api_base,
             api_key=ac.api_key if ac.api_key is not None else j.api_key,
             temperature=ac.temperature if ac.temperature is not None else j.temperature,
@@ -275,7 +301,7 @@ def _build_filters(cfg: EvalConfig) -> list[ClaimFilter]:
             j = cfg.judge
             filters.append(
                 LLMCheckWorthinessFilter(
-                    model=cw.model if cw.model is not None else j.model,
+                    model=_chat_model_fallback(cfg, "check_worthiness_filter", cw.model),
                     api_base=cw.api_base if cw.api_base is not None else j.api_base,
                     api_key=cw.api_key if cw.api_key is not None else j.api_key,
                     temperature=cw.temperature if cw.temperature is not None else j.temperature,
@@ -314,7 +340,7 @@ def _build_aligner(
         la = cfg.llm_aligner
         j = cfg.judge
         return LLMCitationAligner(
-            model=la.model if la.model is not None else j.model,
+            model=_chat_model_fallback(cfg, "llm_aligner", la.model),
             api_base=la.api_base if la.api_base is not None else j.api_base,
             api_key=la.api_key if la.api_key is not None else j.api_key,
             temperature=la.temperature if la.temperature is not None else j.temperature,
@@ -328,6 +354,16 @@ def _build_aligner(
 
 def _build_judge(cfg: EvalConfig) -> EvidenceJudge:
     j = cfg.judge
+    if j.backend == "decision":
+        return DecisionJudge(
+            model=j.model,
+            api_base=j.api_base,
+            api_key=j.api_key,
+            max_retries=j.max_retries,
+            mode=j.decision_mode,
+            thresholds=j.decision_thresholds,
+            state_format=j.decision_state_format,
+        )
     return LiteLLMJudge(
         model=j.model,
         api_base=j.api_base,
@@ -343,6 +379,7 @@ def _build_judge(cfg: EvalConfig) -> EvidenceJudge:
 def _build_precision_judge(cfg: EvalConfig) -> PrecisionJudge:
     """Build a precision judge, using the dedicated config if provided."""
     j = cfg.citation_precision_judge or cfg.judge
+    _require_chat_backend(j, "citation_precision_judge")
     return LiteLLMPrecisionJudge(
         model=j.model,
         api_base=j.api_base,
@@ -357,6 +394,7 @@ def _build_precision_judge(cfg: EvalConfig) -> PrecisionJudge:
 def _build_recall_judge(cfg: EvalConfig) -> RecallJudge:
     """Build a recall judge, using the dedicated config if provided."""
     j = cfg.citation_recall_judge or cfg.judge
+    _require_chat_backend(j, "citation_recall_judge")
     return LiteLLMRecallJudge(
         model=j.model,
         api_base=j.api_base,
@@ -371,6 +409,7 @@ def _build_recall_judge(cfg: EvalConfig) -> RecallJudge:
 def _build_relevance_judge(cfg: EvalConfig) -> RelevanceJudge:
     """Build a relevance judge, using the dedicated config if provided."""
     j = cfg.relevance_judge or cfg.judge
+    _require_chat_backend(j, "relevance_judge")
     return LiteLLMRelevanceJudge(
         model=j.model,
         api_base=j.api_base,

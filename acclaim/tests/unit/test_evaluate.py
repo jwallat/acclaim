@@ -10,15 +10,20 @@ from acclaim.claims.sentence import SentenceClaimExtractor
 from acclaim.config.load import EvalConfig, JudgeConfig
 from acclaim.data_models import Claim, Document, SupportLabel, SupportResult
 from acclaim.evaluate import (
+    _build_aligner,
     _build_extractor,
     _build_filters,
     _build_judge,
+    _build_precision_judge,
+    _build_recall_judge,
+    _build_relevance_judge,
     _build_metric_overrides,
     evaluate,
 )
 from acclaim.filters.base import ClaimFilter, FilterDecision
 from acclaim.filters.check_worthiness import ClaimCategory, LLMCheckWorthinessFilter
 from acclaim.judges.base import EvidenceJudge
+from acclaim.judges.decision import DecisionJudge
 from acclaim.judges.litellm import LiteLLMJudge
 from acclaim.metrics.citation_f1 import CitationF1Metric
 from acclaim.metrics.citation_precision import CitationPrecisionMetric
@@ -282,3 +287,63 @@ def test_build_filters_check_worthiness_own_model():
     cfg.check_worthiness_filter.model = "filter-model"
     (f,) = _build_filters(cfg)
     assert f.client.model == "filter-model"
+
+
+# ---------------------------------------------------------------------------
+# Decision backend
+# ---------------------------------------------------------------------------
+
+
+_DECISION_JUDGE = JudgeConfig(
+    backend="decision",
+    model="openrouter/typesafe/jev-1.13",
+    api_key="k",
+    decision_mode="noul",
+    decision_thresholds={"supported": 0.7},
+    decision_state_format="text",
+)
+
+
+def test_build_judge_decision_backend():
+    judge = _build_judge(EvalConfig(judge=_DECISION_JUDGE))
+    assert isinstance(judge, DecisionJudge)
+    assert judge.client.model == "openrouter/typesafe/jev-1.13"
+    assert judge.client.api_key == "k"
+    assert judge.mode == "noul"
+    assert judge.thresholds == {"supported": 0.7, "refuted": 0.5}
+    assert judge.state_format == "text"
+
+
+def test_decision_judge_not_inherited_by_atomic_extractor():
+    cfg = EvalConfig(claim_extractor="atomic", judge=_DECISION_JUDGE)
+    with pytest.raises(ValueError, match="atomic_claim_extractor"):
+        _build_extractor(cfg)
+
+
+def test_decision_judge_with_explicit_extractor_model():
+    cfg = EvalConfig(claim_extractor="atomic", judge=_DECISION_JUDGE)
+    cfg.atomic_claim_extractor.model = "gpt-4o"
+    assert _build_extractor(cfg).client.model == "gpt-4o"
+
+
+def test_decision_judge_not_inherited_by_filter_or_aligner():
+    cfg = EvalConfig(
+        claim_extractor="atomic", claim_filters=["check_worthiness"], judge=_DECISION_JUDGE
+    )
+    with pytest.raises(ValueError, match="check_worthiness_filter"):
+        _build_filters(cfg)
+    with pytest.raises(ValueError, match="llm_aligner"):
+        _build_aligner(cfg, None)
+
+
+@pytest.mark.parametrize(
+    "builder", [_build_precision_judge, _build_recall_judge, _build_relevance_judge]
+)
+def test_other_judges_reject_decision_backend(builder):
+    with pytest.raises(NotImplementedError, match="not yet supported"):
+        builder(EvalConfig(judge=_DECISION_JUDGE))
+
+
+def test_other_judges_use_chat_override_when_main_judge_is_decision():
+    cfg = EvalConfig(judge=_DECISION_JUDGE, relevance_judge=JudgeConfig(model="gpt-4o"))
+    assert _build_relevance_judge(cfg).client.model == "gpt-4o"
