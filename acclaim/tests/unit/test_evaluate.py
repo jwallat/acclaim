@@ -3,6 +3,9 @@ Unit tests for the evaluate() orchestration pipeline (all LLM calls mocked
 via a fake EvidenceJudge / explicit overrides — no network calls).
 """
 
+import dataclasses
+from unittest.mock import MagicMock
+
 import pytest
 
 from acclaim.claims.atomic import AtomicClaimExtractor
@@ -342,6 +345,35 @@ def test_decision_judge_not_inherited_by_filter_or_aligner():
 def test_other_judges_reject_decision_backend(builder):
     with pytest.raises(NotImplementedError, match="not yet supported"):
         builder(EvalConfig(judge=_DECISION_JUDGE))
+
+
+@pytest.mark.parametrize(
+    "overrides, error",
+    [
+        ({"claim_filters": ["check_worthiness"]}, ValueError),  # filter can't inherit
+        ({"aligner": "llm"}, ValueError),  # aligner can't inherit
+        ({"metrics": ["citation_precision"]}, NotImplementedError),
+        ({"relevance_stratified_metrics": ["coverage"]}, NotImplementedError),
+    ],
+)
+def test_evaluate_fails_before_any_llm_call_on_backend_misconfig(overrides, error):
+    cfg = EvalConfig(judge=_DECISION_JUDGE, **overrides)
+    extractor = MagicMock(spec=SentenceClaimExtractor)
+    judge = MagicMock(spec=EvidenceJudge)
+    with pytest.raises(error):
+        evaluate("A fact [1].", [Document(doc_id="d", text="A.")], config=cfg,
+                 claim_extractor=extractor, judge=judge)
+    extractor.extract.assert_not_called()
+    judge.evaluate.assert_not_called()
+
+
+def test_evaluate_invalid_decision_mode_fails_before_extraction():
+    cfg = EvalConfig(judge=dataclasses.replace(_DECISION_JUDGE, decision_mode="vote"))
+    extractor = MagicMock(spec=SentenceClaimExtractor)
+    with pytest.raises(ValueError, match="Unknown decision mode"):
+        evaluate("A fact [1].", [Document(doc_id="d", text="A.")], config=cfg,
+                 claim_extractor=extractor)
+    extractor.extract.assert_not_called()
 
 
 def test_other_judges_use_chat_override_when_main_judge_is_decision():

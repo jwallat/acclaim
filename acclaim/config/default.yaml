@@ -59,7 +59,9 @@ aligner: null
 #
 # Decision models: set `backend: decision` to use a decision model
 # (OpenRouter Decisions API) instead of a chat LLM. temperature, max_tokens,
-# thinking and system_prompt are then ignored. Chat-only components
+# thinking and system_prompt are then ignored; the decision judge uses a
+# built-in prompt mirroring the system_prompt below (acclaim/judges/decision.py),
+# so keep the two in sync when editing it. Chat-only components
 # (atomic_claim_extractor, check_worthiness_filter, llm_aligner) can no
 # longer inherit `judge.model` and need their own explicit `model`.
 #

@@ -126,6 +126,19 @@ def evaluate(
     """
     cfg = config or load_config()
 
+    # ── Build pipeline components ─────────────────────────────────────────────
+    # Everything is built before the first LLM call so config errors (e.g. a
+    # decision-model judge where a chat model is required, or an invalid
+    # decision_mode) fail fast instead of after paid extraction/judging calls.
+    extractor = claim_extractor or _build_extractor(cfg)
+    filters = claim_filters if claim_filters is not None else _build_filters(cfg)
+    aligner_obj = aligner or _build_aligner(cfg, claim_extractor)
+    judge_obj = judge or _build_judge(cfg)
+    effective_max_workers = (
+        _inner_max_workers if _inner_max_workers is not None else cfg.concurrency.max_workers
+    )
+    metric_overrides = _build_metric_overrides(cfg, effective_max_workers)
+
     # ── Log inputs ─────────────────────────────────────────────
     logger.info("Evaluating answer: %s", answer)
     logger.info("Documents: %d", len(documents))
@@ -139,13 +152,11 @@ def evaluate(
     doc_by_id: dict[str, Document] = {doc.doc_id: doc for doc in documents}
 
     # ── Stage 1: Claim extraction ─────────────────────────────────────────────
-    extractor = claim_extractor or _build_extractor(cfg)
     answer_obj = Answer(text=answer)
     claims = extractor.extract(answer_obj)
     logger.info("Extracted %d claims", len(claims))
 
     # ── Stage 1b: Claim filtering (optional) ──────────────────────────────────
-    filters = claim_filters if claim_filters is not None else _build_filters(cfg)
     filtered_claims = claims
     filter_decisions: list[FilterDecision] = []
     for claim_filter in filters:
@@ -165,16 +176,10 @@ def evaluate(
         logger.info("Kept %d of %d claims after filtering", len(filtered_claims), len(claims))
 
     # ── Stage 2: Citation alignment ───────────────────────────────────────────
-    aligner_obj = aligner or _build_aligner(cfg, claim_extractor)
     aligned_claims = aligner_obj.align(filtered_claims, answer, citation_to_doc)
     logger.info("Aligned %d claims to citations", len(aligned_claims))
 
     # ── Stage 3: Evidence judgement ───────────────────────────────────────────
-    judge_obj = judge or _build_judge(cfg)
-    effective_max_workers = (
-        _inner_max_workers if _inner_max_workers is not None else cfg.concurrency.max_workers
-    )
-
     def _judge_one(aligned: AlignedClaim) -> ClaimResult:
         docs_for_claim = [
             doc_by_id[did] for did in aligned.citation_doc_ids if did in doc_by_id
@@ -192,7 +197,6 @@ def evaluate(
 
     # ── Stage 4: Metrics ──────────────────────────────────────────────────────
     valid_doc_ids = list(doc_by_id.keys())
-    metric_overrides = _build_metric_overrides(cfg, effective_max_workers)
     metrics = compute_metrics(
         cfg.metrics,
         claim_results,

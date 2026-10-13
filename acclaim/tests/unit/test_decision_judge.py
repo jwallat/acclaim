@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
+from acclaim.config.load import load_config
 from acclaim.data_models import Claim, Document, SupportLabel
 from acclaim.decision_client import DecisionResponse
-from acclaim.judges.decision import DecisionJudge
+from acclaim.judges.decision import _INSTRUCTIONS, _LABEL_CRITERIA, DecisionJudge
 
 
 _CLAIM = Claim(text="The Eiffel Tower is in Paris.", span=(-1, -1))
@@ -112,6 +113,26 @@ def test_noul_mode_asks_two_questions():
     q = _make_judge(mode="noul")._build_questions()
     assert set(q) == {"supported", "refuted"}
     assert all(v["type"] == "noul" and set(v["criteria"]) == {"true", "false"} for v in q.values())
+
+
+@pytest.mark.parametrize("mode", ["choice", "score", "noul"])
+def test_all_modes_share_the_chat_aligned_prompt(mode):
+    for question in _make_judge(mode=mode)._build_questions().values():
+        assert question["instructions"].startswith(_INSTRUCTIONS)
+
+
+def test_prompt_mirrors_default_chat_system_prompt():
+    chat_prompt = load_config().judge.system_prompt
+    for criterion in _LABEL_CRITERIA.values():
+        text = criterion.rstrip(".")
+        assert text[0].lower() + text[1:] in chat_prompt
+    shared = [
+        line.strip()
+        for line in chat_prompt.splitlines()
+        if line.strip().startswith(("Document:", "Claim:", "Important:", "You are"))
+    ]
+    assert len(shared) == 8
+    assert all(line in _INSTRUCTIONS for line in shared)
 
 
 # ---------------------------------------------------------------------------

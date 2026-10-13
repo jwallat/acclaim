@@ -7,7 +7,9 @@ LLM. Decision models return calibrated probabilities rather than text, so
 no JSON parsing is needed and the ``reason`` is a summary of the
 probabilities.
 
-Three question modes are supported:
+All modes share one prompt that mirrors the chat judge's default
+``system_prompt`` (label definitions and examples). Three question modes
+are supported:
 
   choice — one ``choice`` question over SUPPORTED / REFUTED / UNCLEAR.
   noul   — two independent yes/no questions ("supported?", "contradicted?")
@@ -32,69 +34,53 @@ DECISION_MODES = ("choice", "noul", "score")
 STATE_FORMATS = ("structured", "text")
 DEFAULT_THRESHOLDS: dict[str, float] = {"supported": 0.5, "refuted": 0.5}
 
-_INSTRUCTIONS = (
-    "Judge whether the evidence documents support the claim. "
-    "Base the judgment only on the evidence, not on outside knowledge."
-)
-
+# The prompt mirrors the chat judge's `judge.system_prompt` in
+# config/default.yaml (also used by library_evals/judges/config.yaml), minus
+# the JSON output format, so chat and decision judges are compared on the same
+# label definitions and examples. All three modes share it; only the question
+# shape differs. Keep the two in sync.
 _LABEL_CRITERIA: dict[SupportLabel, str] = {
     SupportLabel.SUPPORTED: (
-        "The evidence explicitly states or strongly implies that the claim is true."
+        "The document explicitly states or strongly implies the claim is true."
     ),
-    SupportLabel.REFUTED: (
-        "The evidence contains a direct, clear contradiction of the claim. "
-        "Use only for direct contradictions, not when the evidence is silent "
-        "or about a different topic."
-    ),
+    SupportLabel.REFUTED: "The document contains a direct, clear contradiction of the claim.",
     SupportLabel.UNCLEAR: (
-        "The evidence does not address the claim, is off-topic, or is ambiguous."
+        "The document does not address the claim, is off-topic, or the evidence is ambiguous."
     ),
 }
 
-# Choice mode gets a fuller definition: explicit rules plus worked examples.
-# The examples are deliberately not taken from library_evals/judges/pairs.jsonl.
-_CHOICE_INSTRUCTIONS = """You are an expert fact-checker. Decide whether the evidence documents support the claim.
+_INSTRUCTIONS = f"""You are an expert fact-checker. Determine whether the provided claim is supported by the evidence document.
 
-Rules:
-1. Use only the evidence. Do not use outside knowledge, even if you know the claim is true or false.
-2. SUPPORTED requires every part of the claim (who, what, when, where, how many) to be stated in or directly implied by the evidence. Paraphrases count. If any part is missing, the claim is not SUPPORTED.
-3. Evidence about a related but different entity, event, time, or version (e.g. a sequel, a remake, a different year, a re-election instead of a first election) does not support the claim.
-4. Evidence that only makes the claim plausible, or from which the claim could only be guessed, does not support it.
-5. REFUTED requires the evidence to state something about the same entity, event, and time that cannot be true together with the claim (e.g. a different date, number, place, or person). Missing information is never a contradiction: if the evidence is silent or about something else, the label is UNCLEAR.
+Label definitions:
+  SUPPORTED — {_LABEL_CRITERIA[SupportLabel.SUPPORTED]}
+  REFUTED   — {_LABEL_CRITERIA[SupportLabel.REFUTED]}
+  UNCLEAR   — {_LABEL_CRITERIA[SupportLabel.UNCLEAR]}
 
-Examples:
+Important: use REFUTED only for direct contradictions. If the document simply does not mention the claim or is about a different topic, use UNCLEAR.
 
-Evidence: "The Golden Gate Bridge opened to vehicle traffic on May 27, 1937, after four years of construction."
-Claim: "The Golden Gate Bridge opened in 1937."
-Label: SUPPORTED (the year is stated).
+---
 
-Evidence: "Marie Curie was born in Warsaw, then part of the Russian Empire, in 1867."
-Claim: "Marie Curie was born in Paris."
-Label: REFUTED (the evidence gives a different birthplace for the same person).
+Example 1 — SUPPORTED
 
-Evidence: "The Nile flows north through eleven countries before emptying into the Mediterranean Sea."
-Claim: "The Nile is the longest river in Africa and flows through eleven countries."
-Label: UNCLEAR (only the second part is supported; the length is not mentioned).
+Document: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It was constructed from 1887 to 1889."
+Claim: "The Eiffel Tower is located in Paris."
+Label: SUPPORTED. The document explicitly states the Eiffel Tower is in Paris, France.
 
-Evidence: "Apollo 11 landed on the Moon on July 20, 1969."
-Claim: "Apollo 12 landed on the Moon in November 1969."
-Label: UNCLEAR (the evidence is about a different mission; it neither states nor contradicts the claim)."""
+---
 
-_CHOICE_CRITERIA: dict[SupportLabel, str] = {
-    SupportLabel.SUPPORTED: (
-        "Every part of the claim is stated in or directly implied by the evidence."
-    ),
-    SupportLabel.REFUTED: (
-        "The evidence states something about the same entity, event, and time "
-        "that cannot be true together with the claim. Missing information is "
-        "never a contradiction."
-    ),
-    SupportLabel.UNCLEAR: (
-        "Anything else: the evidence is silent on the claim or on part of it, is "
-        "about a related but different entity, event, or time, only makes the "
-        "claim plausible, or is ambiguous."
-    ),
-}
+Example 2 — REFUTED
+
+Document: "It was announced that the first concert would be pushed back by eight days to July 16, and three other July dates would be rescheduled for March 2010."
+Claim: "The first concert was rescheduled for July 13."
+Label: REFUTED. The document states the concert was moved to July 16, directly contradicting the claim of July 13.
+
+---
+
+Example 3 — UNCLEAR
+
+Document: "India is the 7th largest producer of hydroelectric power in the world. As of April 2017, India's installed utility-scale hydroelectric capacity was 44,594 MW."
+Claim: "The Colorado River flows through the Grand Canyon."
+Label: UNCLEAR. The document is about hydroelectric power in India and does not address the claim about the Colorado River."""
 
 # Ordinal order used by score mode (index 0 = lowest).
 _SCORE_LEVELS: tuple[SupportLabel, ...] = (
@@ -200,8 +186,8 @@ class DecisionJudge(EvidenceJudge):
             return {
                 "verdict": {
                     "type": "choice",
-                    "instructions": _CHOICE_INSTRUCTIONS,
-                    "criteria": {label.value: text for label, text in _CHOICE_CRITERIA.items()},
+                    "instructions": _INSTRUCTIONS,
+                    "criteria": {label.value: text for label, text in _LABEL_CRITERIA.items()},
                 }
             }
         if self.mode == "score":
@@ -209,8 +195,8 @@ class DecisionJudge(EvidenceJudge):
                 "verdict": {
                     "type": "score",
                     "instructions": (
-                        f"{_INSTRUCTIONS} Place the evidence on a scale from "
-                        "contradicting the claim to supporting it."
+                        f"{_INSTRUCTIONS}\n\nPlace the document on a scale from "
+                        "contradicting the claim (REFUTED) to supporting it (SUPPORTED)."
                     ),
                     "criteria": [
                         f"{label.value}: {_LABEL_CRITERIA[label]}" for label in _SCORE_LEVELS
@@ -220,23 +206,25 @@ class DecisionJudge(EvidenceJudge):
         return {
             "supported": {
                 "type": "noul",
-                "instructions": "Do the evidence documents support the claim?",
+                "instructions": f"{_INSTRUCTIONS}\n\nQuestion: is the label SUPPORTED?",
                 "criteria": {
                     "true": _LABEL_CRITERIA[SupportLabel.SUPPORTED],
                     "false": (
-                        "The evidence does not mention the claim, is about a different "
-                        "topic, is ambiguous, or contradicts the claim."
+                        "The label is REFUTED or UNCLEAR: the document contradicts the "
+                        "claim, does not address it, is off-topic, or the evidence is "
+                        "ambiguous."
                     ),
                 },
             },
             "refuted": {
                 "type": "noul",
-                "instructions": "Do the evidence documents directly contradict the claim?",
+                "instructions": f"{_INSTRUCTIONS}\n\nQuestion: is the label REFUTED?",
                 "criteria": {
                     "true": _LABEL_CRITERIA[SupportLabel.REFUTED],
                     "false": (
-                        "The evidence agrees with the claim, does not mention it, is "
-                        "about a different topic, or is ambiguous."
+                        "The label is SUPPORTED or UNCLEAR: the document supports the "
+                        "claim, does not address it, is off-topic, or the evidence is "
+                        "ambiguous."
                     ),
                 },
             },
