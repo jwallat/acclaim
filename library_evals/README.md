@@ -21,8 +21,11 @@ numbers are reproducible without rerunning LLM calls.
 
 ## Shared conventions
 
-- Run everything with `mamba run -n attribution-eval python ...` (or
-  `micromamba run -n attribution-eval ...`) — see the environment note in
+- Install the eval dependencies from the repo root with
+  `pip install -r requirements.txt` and
+  `python -m spacy download en_core_web_sm`.
+- Run everything with `mamba run -n acclaim python ...` (or
+  `micromamba run -n acclaim ...`) — see the environment note in
   each subfolder.
 - Pairwise/model comparisons pull from `predicted_claims.jsonl` (produced by
   `atomic_claims/run_extractor.py`), so `atomic_claims/` is upstream of

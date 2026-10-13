@@ -54,6 +54,14 @@ mamba activate acclaim
 pip install -e .
 ```
 
+To also run the experiments in [`library_evals/`](library_evals/README.md),
+install the extra evaluation and notebook dependencies:
+
+```bash
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
+
 ### API keys
 
 `acclaim` doesn't require any special setup for API keys — just export the

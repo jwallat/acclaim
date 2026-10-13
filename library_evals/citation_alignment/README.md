@@ -60,8 +60,8 @@ true source) — those should be marked incorrect if the doc ids differ.
 ## Running it
 
 ```bash
-mamba run -n attribution-eval python sample_answers.py
-mamba run -n attribution-eval python build_annotation_sheet.py
+mamba run -n acclaim python sample_answers.py
+mamba run -n acclaim python build_annotation_sheet.py
 # ... fill in the `correct` column in annotation_sheet.csv by hand ...
-mamba run -n attribution-eval python compute_accuracy.py
+mamba run -n acclaim python compute_accuracy.py
 ```

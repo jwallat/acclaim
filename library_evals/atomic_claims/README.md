@@ -18,11 +18,11 @@ the full rationale.
 
 ## One-time setup
 
-Dependencies (not yet wired into `pyproject.toml`):
+Dependencies are listed in the repo-root [`requirements.txt`](../../requirements.txt):
 
 ```bash
-micromamba run -n attribution-eval pip install transformers torch spacy matplotlib pandas
-micromamba run -n attribution-eval python -m spacy download en_core_web_sm
+micromamba run -n acclaim pip install -r requirements.txt
+micromamba run -n acclaim python -m spacy download en_core_web_sm
 ```
 
 A vLLM server is required for the extraction step. The repo ships
@@ -66,7 +66,7 @@ and forwards extra flags to `intrinsic_eval.py`.
 Needs a vLLM server (or any LiteLLM-compatible endpoint).
 
 ```bash
-micromamba run -n attribution-eval python -m library_evals.atomic_claims.run_extractor \
+micromamba run -n acclaim python -m library_evals.atomic_claims.run_extractor \
     --n 500 --seed 42 \
     --model openai/meta-llama/Meta-Llama-3-8B-Instruct \
     --api-base http://localhost:8000/v1 \
@@ -83,7 +83,7 @@ Output: one JSON record per line with `question`, `answer`, `docs`,
 NLI-heavy; runs on GPU if `torch.cuda.is_available()`, otherwise CPU.
 
 ```bash
-micromamba run -n attribution-eval python -m library_evals.atomic_claims.intrinsic_eval \
+micromamba run -n acclaim python -m library_evals.atomic_claims.intrinsic_eval \
     --input  library_evals/atomic_claims/predicted_claims.jsonl \
     --output-prefix library_evals/atomic_claims/results \
     --batch-size 32 --verbose
@@ -107,7 +107,7 @@ Implements the three checks from `PLAN.md`:
 3. NLI spot-check on 20 hand-picked probes (negation, numbers, scope)
 
 ```bash
-micromamba run -n attribution-eval python -m library_evals.atomic_claims.sanity_check \
+micromamba run -n acclaim python -m library_evals.atomic_claims.sanity_check \
     --input library_evals/atomic_claims/predicted_claims.jsonl
 ```
 
@@ -117,7 +117,7 @@ predictions needed).
 ### 4. Browse results
 
 ```bash
-micromamba run -n attribution-eval jupyter lab library_evals/atomic_claims/report.ipynb
+micromamba run -n acclaim jupyter lab library_evals/atomic_claims/report.ipynb
 ```
 
 Renders the summary table, faithfulness/coverage/claim-count histograms,
@@ -144,8 +144,8 @@ job (see its `#SBATCH` header for resource requests).
 Once summaries exist for multiple models:
 
 ```bash
-mamba run -n attribution-eval python compare_models.py                # print table
-mamba run -n attribution-eval python compare_models.py --csv comparison.csv
+mamba run -n acclaim python compare_models.py                # print table
+mamba run -n acclaim python compare_models.py --csv comparison.csv
 ```
 
 Scans `results_*_summary.json` and prints one row per model across
@@ -160,7 +160,7 @@ and the single-best-claim NLI score — use it when an example's
 sentence/claim pairing the metric is scoring:
 
 ```bash
-mamba run -n attribution-eval python -m library_evals.atomic_claims.inspect_coverage \
+mamba run -n acclaim python -m library_evals.atomic_claims.inspect_coverage \
     --predictions predicted_claims.jsonl --alce-index 25 --topk 3
 ```
 
