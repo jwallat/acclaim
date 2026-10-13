@@ -1,12 +1,24 @@
-PyYAML
-pytest
-transformers==5
+# Core (mirrors [project.dependencies] in pyproject.toml)
+litellm>=1.100,<2,!=1.82.7,!=1.82.8
+pydantic>=2.0
+PyYAML>=6.0
+pysbd>=0.3.4
+transformers>=5.0.0
+
+# Dev / tests (mirrors [project.optional-dependencies].dev)
+pytest>=8.0
+pytest-asyncio
+python-dotenv>=1.0
+
+# Library evals (library_evals/)
+# spaCy model: python -m spacy download en_core_web_sm
 torch
-pydantic
-json5
-ml-dtypes
-scikit-learn
+sentencepiece  # DeBERTa-v3 tokenizer for the default NLI model
+spacy>=3.0
+tqdm
+numpy
+pandas
+matplotlib
+
+# Notebooks
 ipykernel
-accelerate
-litellm
-torch-c-dlpack-ext
