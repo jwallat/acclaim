@@ -11,6 +11,10 @@ class CitationCoverage(Metric):
     Proportion of claims that have at least one citation.
 
     Formula: ``cited_claims / total_claims``
+
+    A citation to a non-existent document (``invalid:<n>``) still counts as a
+    citation here; its quality is reflected in ``citation_correctness`` and
+    ``hallucination_rate``.
     """
 
     @property

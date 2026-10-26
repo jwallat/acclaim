@@ -12,6 +12,10 @@ class HallucinationRate(Metric):
 
     Formula: ``non_existent_citations / total_citations``
 
+    Aligners map markers whose number has no document (e.g. ``[7]`` with 5
+    documents) to the placeholder ID ``invalid:<n>``, which is never in
+    *valid_doc_ids* and therefore counts as hallucinated.
+
     Returns ``0.0`` when ``valid_doc_ids`` is ``None`` (nothing to check
     against) or when there are no citations at all.
     """

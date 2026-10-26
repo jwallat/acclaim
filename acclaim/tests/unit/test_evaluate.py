@@ -85,6 +85,36 @@ def test_evaluate_respects_explicit_citation_to_doc():
     assert result.claims[0].citation_doc_ids == ["doc_paris"]
 
 
+def test_evaluate_out_of_range_citation_counts_as_hallucinated():
+    class _RecordingJudge(EvidenceJudge):
+        def __init__(self) -> None:
+            self.calls: dict[str, list[str]] = {}
+
+        def evaluate(self, claim: Claim, docs: list[Document]) -> SupportResult:
+            self.calls[claim.text] = [d.doc_id for d in docs]
+            label = SupportLabel.SUPPORTED if docs else SupportLabel.UNCLEAR
+            return SupportResult(label=label, confidence=1.0, reason="test")
+
+    documents = [
+        Document(doc_id="doc1", text="Paris is the capital of France."),
+        Document(doc_id="doc2", text="The Eiffel Tower was completed in 1889."),
+    ]
+    answer = "Paris is the capital of France [1]. The Louvre is in Paris [7]."
+    cfg = EvalConfig(
+        metrics=["coverage", "hallucination_rate", "citation_correctness"]
+    )
+    judge = _RecordingJudge()
+
+    result = evaluate(answer, documents, config=cfg, judge=judge)
+
+    assert [c.citation_doc_ids for c in result.claims] == [["doc1"], ["invalid:7"]]
+    louvre_claim = result.claims[1].claim.text
+    assert judge.calls[louvre_claim] == []
+    assert result.metrics["hallucination_rate"] == pytest.approx(0.5)
+    assert result.metrics["coverage"] == pytest.approx(1.0)
+    assert result.metrics["citation_correctness"] == pytest.approx(0.5)
+
+
 def test_evaluate_no_metadata_when_disabled():
     documents = [Document(doc_id="doc1", text="A.")]
     answer = "A fact [1]."

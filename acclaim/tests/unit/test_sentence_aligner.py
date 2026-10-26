@@ -39,13 +39,13 @@ def test_no_citation_markers_in_span():
     assert aligned[0].citation_doc_ids == []
 
 
-def test_unknown_citation_number_ignored():
+def test_unknown_citation_number_kept_as_invalid():
     aligner = _make_aligner()
     # Citation [9] is not in citation_to_doc
     text = "Some claim [9]."
     claims = [Claim(text="Some claim.", span=(0, len(text)))]
     aligned = aligner.align(claims, text, CITATION_TO_DOC)
-    assert aligned[0].citation_doc_ids == []
+    assert aligned[0].citation_doc_ids == ["invalid:9"]
 
 
 def test_span_minus_one_returns_empty():

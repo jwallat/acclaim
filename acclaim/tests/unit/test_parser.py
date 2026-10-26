@@ -62,8 +62,8 @@ def test_extract_doc_ids_for_span_comma_separated():
     assert doc_ids == ["doc_1", "doc_3"]
 
 
-def test_extract_doc_ids_for_span_unknown_number_ignored():
+def test_extract_doc_ids_for_span_unknown_number_kept_as_invalid():
     text = "Claim [1, 9]."
     citation_to_doc = {1: "doc_1"}
     doc_ids = extract_doc_ids_for_span((0, len(text)), text, citation_to_doc)
-    assert doc_ids == ["doc_1"]
+    assert doc_ids == ["doc_1", "invalid:9"]

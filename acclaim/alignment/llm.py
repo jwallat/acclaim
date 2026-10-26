@@ -26,7 +26,12 @@ from ._scoring import token_weights as _token_weights
 from ._scoring import tokenize as _tokenize
 from ._scoring import weighted_claim_overlap as _weighted_claim_overlap
 from .base import CitationAligner
-from ..citations.parser import extract_doc_ids_for_span, find_citation_markers, parse_citation_markers
+from ..citations.parser import (
+    citation_doc_id,
+    extract_doc_ids_for_span,
+    find_citation_markers,
+    parse_citation_markers,
+)
 from ..data_models import AlignedClaim, Claim
 from ..llm_client import LiteLLMClient
 from ..text_utils import split_sentences_with_spans
@@ -272,28 +277,39 @@ Claims:
         if not needs_alignment:
             return [a for a in aligned if a is not None]
 
+        # Only numbers that literally appear as [N] markers in the answer are
+        # kept. Ones missing from citation_to_doc (e.g. [7] with 5 documents)
+        # are the answer's error and map to "invalid:<n>"; numbers the LLM
+        # invents are the aligner's error and are dropped below.
+        text_numbers = set(parse_citation_markers(text))
+        if not text_numbers:
+            # Nothing to attribute to — skip the LLM call entirely.
+            for orig_i, claim in needs_alignment:
+                aligned[orig_i] = AlignedClaim(claim=claim, citation_doc_ids=[])
+            return [a for a in aligned if a is not None]
+
         batch_claims = [c for _, c in needs_alignment]
         by_index = self._call_llm(batch_claims, text)
 
-        valid_numbers = set(parse_citation_markers(text)) & set(citation_to_doc)
         sentence_index = self._sentence_index(text)
         claim_token_sets = [_tokenize(c.text) for c in batch_claims]
         weights = _token_weights(claim_token_sets)
 
         for local_i, (orig_i, claim) in enumerate(needs_alignment):
             numbers = set(by_index.get(local_i, []))
-            dropped = numbers - valid_numbers
+            dropped = numbers - text_numbers
             if dropped:
                 logger.warning(
-                    "LLMCitationAligner: dropping fabricated citation number(s) %s for claim %r",
+                    "LLMCitationAligner: dropping citation number(s) %s not present "
+                    "in the answer text for claim %r",
                     sorted(dropped),
                     claim.text,
                 )
-            numbers &= valid_numbers
+            numbers &= text_numbers
 
             seen: dict[str, None] = {}
             for n in sorted(numbers):
-                seen[citation_to_doc[n]] = None
+                seen[citation_doc_id(n, citation_to_doc)] = None
             doc_ids = list(seen)
 
             span = (-1, -1)

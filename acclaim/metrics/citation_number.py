@@ -16,6 +16,9 @@ class CitationNumber(Metric):
 
     If raw answer text is unavailable, a fallback estimate is used based on the
     number of aligned citation document IDs across claims.
+
+    Markers pointing to non-existent documents (e.g. ``[7]`` with 5 documents)
+    are counted like any other marker.
     """
 
     @property

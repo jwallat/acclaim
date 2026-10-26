@@ -91,7 +91,8 @@ class CitationPrecisionMetric(Metric):
             if doc_id not in doc_by_id:
                 logger.warning(
                     "CitationPrecisionMetric: document %r not found for claim %r. "
-                    "Scoring 0.0. Pass `documents` to evaluate().",
+                    "Scoring 0.0. The id is not in `documents` (missing `documents`, "
+                    "or a citation to a non-existent document).",
                     doc_id,
                     cr.claim.text[:60],
                 )

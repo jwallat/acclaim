@@ -34,6 +34,14 @@ def test_no_match_returns_empty():
     assert aligned[0].citation_doc_ids == []
 
 
+def test_out_of_range_marker_kept_as_invalid():
+    text = "Paris is the capital of France [1]. The Eiffel Tower stands 330 m [7]."
+    aligner = JaccardCitationAligner()
+    claims = [Claim(text="The Eiffel Tower is 330 metres high.", span=(-1, -1))]
+    aligned = aligner.align(claims, text, CITATION_TO_DOC)
+    assert aligned[0].citation_doc_ids == ["invalid:7"]
+
+
 def test_sentence_claim_with_span_uses_span_logic():
     """Claims with real spans bypass Jaccard and use direct span extraction."""
     aligner = JaccardCitationAligner()

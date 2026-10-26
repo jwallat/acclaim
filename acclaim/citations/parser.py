@@ -21,6 +21,16 @@ from typing import NamedTuple
 CITATION_MARKER_RE = re.compile(r"\[\s*\d+(?:\s*,\s*\d+)*\s*\]")
 _NUMBER_RE = re.compile(r"\d+")
 
+# Prefix of the placeholder doc ID for a marker whose number is not in
+# ``citation_to_doc`` (e.g. ``[7]`` with only 5 documents). Keeping these
+# instead of dropping them lets the hallucination metric count them.
+INVALID_CITATION_PREFIX = "invalid:"
+
+
+def citation_doc_id(n: int, citation_to_doc: dict[int, str]) -> str:
+    """Map citation number *n* to its doc ID, or to ``invalid:<n>`` if unmapped."""
+    return citation_to_doc.get(n, f"{INVALID_CITATION_PREFIX}{n}")
+
 
 class CitationMarker(NamedTuple):
     """A single ``[N]`` / ``[N][M]`` / ``[N, M]`` marker occurrence in text."""
@@ -77,7 +87,8 @@ def extract_doc_ids_for_span(
     Return the document IDs cited within *span* of *text*.
 
     Scans *text[span[0]:span[1]]* for ``[N]`` markers and maps each found
-    citation number to a document ID via *citation_to_doc*.
+    citation number to a document ID via *citation_to_doc*. Numbers missing
+    from *citation_to_doc* map to ``invalid:<n>`` (see :func:`citation_doc_id`).
 
     Args:
         span:            (start, end) character offsets in *text*.
@@ -92,6 +103,5 @@ def extract_doc_ids_for_span(
     seen: dict[str, None] = {}  # ordered set via dict keys
     for marker in find_citation_markers(text, start, end):
         for n in marker.numbers:
-            if n in citation_to_doc:
-                seen[citation_to_doc[n]] = None
+            seen[citation_doc_id(n, citation_to_doc)] = None
     return list(seen)

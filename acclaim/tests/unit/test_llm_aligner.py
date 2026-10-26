@@ -87,6 +87,33 @@ def test_hallucinated_citation_number_is_dropped(caplog):
     assert any("99" in rec.message for rec in caplog.records)
 
 
+def test_out_of_range_marker_in_text_kept_as_invalid():
+    """A marker the answer really contains, but with no matching document,
+    is the answer's error: keep it as invalid:<n> so hallucination_rate sees it."""
+    text = "Paris is the capital of France [1]. The Eiffel Tower stands 330 m [7]."
+    aligner = _make_aligner()
+    claims = [Claim(text="The Eiffel Tower is 330 metres high.", span=(-1, -1))]
+    with patch.object(aligner.client, "call", return_value=_response((0, [7]))):
+        aligned = aligner.align(claims, text, CITATION_TO_DOC)
+    assert aligned[0].citation_doc_ids == ["invalid:7"]
+    start, end = aligned[0].claim.span
+    assert text[start:end].startswith("The Eiffel Tower")
+
+
+def test_no_markers_in_text_skips_llm():
+    aligner = _make_aligner()
+    claims = [
+        Claim(text="Cody won Big Brother 20.", span=(-1, -1)),
+        Claim(text="Cody defeated Tyler.", span=(-1, -1)),
+    ]
+    text = "Cody won Big Brother 20, defeating Tyler [Not Provided]."
+    with patch.object(aligner.client, "call") as mock_call:
+        aligned = aligner.align(claims, text, CITATION_TO_DOC)
+    mock_call.assert_not_called()
+    assert [a.citation_doc_ids for a in aligned] == [[], []]
+    assert [a.claim.text for a in aligned] == [c.text for c in claims]
+
+
 def test_incomplete_response_falls_back_gracefully_after_retries():
     """A response missing claim indices should retry, then degrade to
     empty citations rather than raising out of align()."""

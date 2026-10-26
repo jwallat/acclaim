@@ -98,7 +98,8 @@ class CitationRecallMetric(Metric):
                 # Cited IDs are present but none could be resolved → 0
                 logger.warning(
                     "CitationRecallMetric: no documents resolved for claim %r "
-                    "(cited ids: %s). Scoring 0.0. Pass `documents` to evaluate().",
+                    "(cited ids: %s). Scoring 0.0. The ids are not in `documents` "
+                    "(missing `documents`, or citations to non-existent documents).",
                     cr.claim.text[:60],
                     cr.citation_doc_ids,
                 )

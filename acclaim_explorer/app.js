@@ -495,9 +495,15 @@ function renderClaims(claimResults, docIdToCiteNum) {
       const citeNumsArr = (c.citation_doc_ids || [])
         .map((d) => docIdToCiteNum[d])
         .filter((n) => n != null);
-      const cites = citeNumsArr.length
-        ? citeNumsArr.map((n) => `[${n}]`).join(" ")
-        : "(no citations)";
+      // "invalid:<n>" = the answer cited [n] but there is no document n.
+      const invalidNums = (c.citation_doc_ids || [])
+        .filter((d) => d.startsWith("invalid:"))
+        .map((d) => d.slice("invalid:".length));
+      const citeParts = [
+        ...citeNumsArr.map((n) => `[${n}]`),
+        ...invalidNums.map((n) => `[${n}] (no such document)`),
+      ];
+      const cites = citeParts.length ? citeParts.join(" ") : "(no citations)";
       const citeNumsData = citeNumsArr.join(",");
       return `
         <li class="claim-item" id="claim-${idx}" data-claim-id="${idx}" data-cite-nums="${citeNumsData}">
