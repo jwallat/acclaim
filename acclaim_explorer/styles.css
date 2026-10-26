@@ -146,6 +146,26 @@ mark.token-hit {
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 .toggle-switch input:checked + .toggle-track .toggle-thumb { transform: translateX(1rem); }
+.toggle-switch[hidden] { display: none; }
+.toggle-small .toggle-label { font-size: 0.8rem; }
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.panel-head h2 { margin: 0; white-space: nowrap; flex-shrink: 0; }
+/* The toggle shrinks (label truncates) rather than overflowing the panel. */
+.panel-head .toggle-switch { min-width: 0; }
+.panel-head .toggle-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.panel-head .toggle-track { flex-shrink: 0; }
 
 .layout {
   display: grid;
@@ -294,6 +314,17 @@ mark.token-hit {
 .pill.supported { background: var(--green-bg); color: var(--green-fg); }
 .pill.refuted   { background: var(--red-bg);   color: var(--red-fg); }
 .pill.unclear   { background: var(--amber-bg); color: var(--amber-fg); }
+.pill.filtered  { background: var(--border);   color: var(--muted); }
+
+.span-guess {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.claim-item.claim-filtered {
+  border-style: dashed;
+  color: var(--muted);
+}
 
 .sentence {
   border-radius: 4px;
@@ -306,6 +337,11 @@ body[data-highlight="support"] .sentence.refuted          { background: var(--re
 body[data-highlight="support"] .sentence.unclear          { background: var(--amber-bg); }
 body[data-highlight="support"] .sentence.mixed-positive   { background: var(--mixed-pos-bg); }
 body[data-highlight="support"] .sentence.mixed-negative   { background: var(--mixed-neg-bg); }
+/* Sentence whose only claims were dropped by the claim filter. */
+body[data-highlight="support"] .sentence.filtered {
+  text-decoration: underline dashed var(--muted);
+  text-underline-offset: 3px;
+}
 .sentence.sentence-hover {
   box-shadow: 0 0 0 2px var(--accent);
 }

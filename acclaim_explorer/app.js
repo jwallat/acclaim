@@ -8,6 +8,7 @@ const state = {
   summary: null,
   currentIdx: 0,
   highlightMode: "support",
+  showFiltered: false,    // also list claims dropped by a claim filter
   pinnedSource: null,       // element that initiated the pin (sentence or claim)
   pinnedSentence: null,     // .sentence element to highlight (or null)
   pinnedClaimIds: null,     // string[] of pinned claim ids (or null)
@@ -22,6 +23,9 @@ const els = {
   nextBtn:        document.getElementById("next-btn"),
   themeBtn:       document.getElementById("theme-btn"),
   highlightToggle: document.getElementById("highlight-toggle"),
+  filteredToggle: document.getElementById("filtered-toggle"),
+  filteredToggleWrap: document.getElementById("filtered-toggle-wrap"),
+  filteredToggleLabel: document.getElementById("filtered-toggle-label"),
   questionText:   document.getElementById("question-text"),
   answerText:     document.getElementById("answer-text"),
   metricsTable:   document.getElementById("metrics-table").querySelector("tbody"),
@@ -155,6 +159,10 @@ function bindEvents() {
     document.body.dataset.highlight = state.highlightMode;
   });
   document.body.dataset.highlight = state.highlightMode;
+  els.filteredToggle.addEventListener("change", () => {
+    state.showFiltered = els.filteredToggle.checked;
+    if (state.records.length) render(state.currentIdx);
+  });
   document.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft")  els.prevBtn.click();
     if (e.key === "ArrowRight") els.nextBtn.click();
@@ -186,10 +194,42 @@ function render(idx) {
   const citationToDoc = rec.citation_to_doc || {};
   const docIdToCiteNum = invertCitationMap(citationToDoc);
 
-  renderAnswer(rec.sentences || [], rec.citation_markers || [], rec.claims || [], citationToDoc);
+  // "Show N filtered claims" — only offered when this example has any.
+  const nFiltered = (rec.filtered_claims || []).length;
+  els.filteredToggleWrap.hidden = nFiltered === 0;
+  // Inline style too: .toggle-switch's display:inline-flex would otherwise
+  // override the [hidden] attribute.
+  els.filteredToggleWrap.style.display = nFiltered === 0 ? "none" : "";
+  els.filteredToggleLabel.textContent = `+${nFiltered} filtered`;
+  els.filteredToggleWrap.title =
+    `Show the ${nFiltered} claim${nFiltered === 1 ? "" : "s"} dropped by the claim filter ` +
+    "(never judged, excluded from metrics)";
+
+  const claims = visibleClaims(rec);
+  renderAnswer(rec.sentences || [], rec.citation_markers || [], claims, citationToDoc);
   renderMetrics(rec.metrics || {});
-  renderClaims(rec.claims || [], docIdToCiteNum);
+  renderClaims(claims, docIdToCiteNum, (rec.claims || []).length);
   renderDocs(rec.documents || [], docIdToCiteNum);
+}
+
+// Kept claims, plus (when "Show Filtered Claims" is on) the claims a claim
+// filter dropped, shaped like claim results so sentence mapping, hover and
+// pinning treat them uniformly. They were never judged and count toward no
+// metric; `filtered: true` marks them for display.
+function visibleClaims(rec) {
+  const kept = rec.claims || [];
+  if (!state.showFiltered) return kept;
+  const filtered = (rec.filtered_claims || []).map((f) => ({
+    claim: { text: f.text, span: [-1, -1] },
+    citation_doc_ids: [],
+    support: { label: "FILTERED", reason: f.reason },
+    display_span: f.display_span,
+    display_span_source: "overlap",
+    filtered: true,
+    category: f.category,
+  }));
+  // Filtered claims go on top, so toggling them on shows them immediately.
+  return [...filtered, ...kept];
 }
 
 function renderAnswer(sentences, citationMarkers, claimResults, citationToDoc) {
@@ -318,10 +358,11 @@ function findSentenceForClaim(claimId) {
 
 function mapClaimsToSentences(sentences, claimResults) {
   // For each sentence, list of claim indices whose span falls inside it.
-  // Claims with span=[-1,-1] (un-aligned) are skipped.
+  // Prefers the server's display_span (which also places un-aligned claims
+  // by token overlap); claims with no placement at all are skipped.
   const out = sentences.map(() => []);
   claimResults.forEach((c, idx) => {
-    const span = c.claim && c.claim.span;
+    const span = c.display_span !== undefined ? c.display_span : c.claim && c.claim.span;
     if (!Array.isArray(span) || span.length !== 2) return;
     const [start, end] = span;
     if (start < 0 || end < 0) return;
@@ -341,10 +382,12 @@ function renderSentence(sent, claimIdxs, claimResults, citationMarkers, citation
   );
   const html = renderTextWithCitationLinks(sent.text, sent.start, relevantMarkers, citationToDoc);
   const ids = claimIdxs.join(",");
-  return `<span class="sentence ${cls}" data-claim-ids="${ids}">${html}</span>`;
+  return `<span class="sentence ${cls}" data-claim-ids="${ids}" data-start="${sent.start}" data-end="${sent.end}">${html}</span>`;
 }
 
 function aggregateLabelClass(labels) {
+  // Filtered claims only color a sentence that has no judged claim.
+  if (labels.size > 1) labels.delete("FILTERED");
   if (labels.size === 0) return "";
   if (labels.size === 1) return [...labels][0].toLowerCase();
   // Any REFUTED present → severe (red/amber). Otherwise it's SUPPORTED +
@@ -483,8 +526,11 @@ function bindMetricTooltips(tableEl) {
   }
 }
 
-function renderClaims(claimResults, docIdToCiteNum) {
-  els.claimsCount.textContent = `(${claimResults.length})`;
+function renderClaims(claimResults, docIdToCiteNum, keptCount = claimResults.length) {
+  const nFiltered = claimResults.length - keptCount;
+  els.claimsCount.textContent = nFiltered
+    ? `(${keptCount} + ${nFiltered})`
+    : `(${keptCount})`;
   els.claimsList.innerHTML = claimResults
     .map((c, idx) => {
       const label = (c.support && c.support.label) || "UNCLEAR";
@@ -505,13 +551,19 @@ function renderClaims(claimResults, docIdToCiteNum) {
       ];
       const cites = citeParts.length ? citeParts.join(" ") : "(no citations)";
       const citeNumsData = citeNumsArr.join(",");
+      // Sentence placement guessed by token overlap, not by the aligner.
+      const guessed = c.display_span_source === "overlap"
+        ? ` <span class="span-guess" title="Sentence placement guessed by word overlap (claim has no aligned span)">≈ sentence</span>`
+        : "";
       return `
-        <li class="claim-item" id="claim-${idx}" data-claim-id="${idx}" data-cite-nums="${citeNumsData}">
+        <li class="claim-item${c.filtered ? " claim-filtered" : ""}" id="claim-${idx}" data-claim-id="${idx}" data-cite-nums="${citeNumsData}">
           <div class="claim-head">
             <div class="claim-text">${escapeHtml(c.claim?.text || "")}</div>
-            <span class="pill ${label.toLowerCase()}">${label}${conf}</span>
+            ${c.filtered
+              ? `<span class="pill filtered" title="Dropped by the claim filter: never judged, excluded from metrics">FILTERED · ${escapeHtml(c.category || "?")}</span>`
+              : `<span class="pill ${label.toLowerCase()}">${label}${conf}</span>`}
           </div>
-          <div class="claim-cites">cites: ${escapeHtml(cites)}</div>
+          ${c.filtered ? "" : `<div class="claim-cites">cites: ${escapeHtml(cites)}${guessed}</div>`}
           ${reason ? `<details class="claim-reason"><summary>reason</summary>${escapeHtml(reason)}</details>` : ""}
         </li>`;
     })
@@ -561,9 +613,11 @@ function highlightClaimTokensInDocs(claimIds, docCiteNums) {
   const rec = state.records[state.currentIdx];
   if (!rec) return;
 
+  // Claim ids index the rendered list (filtered claims first when shown).
+  const claims = visibleClaims(rec);
   const keywords = new Set();
   claimIds.forEach((id) => {
-    const text = rec.claims[id]?.claim?.text || "";
+    const text = claims[id]?.claim?.text || "";
     getKeywords(text).forEach((w) => keywords.add(w));
   });
   if (!keywords.size) return;

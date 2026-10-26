@@ -79,9 +79,15 @@
       </div>
 
       <div class="panel" id="claims-panel">
-        <h2>Claims <span class="count" id="claims-count"></span></h2>
-        <ul class="claims-list" id="claims-list"></ul>
-      </div>
+        <div class="panel-head">
+          <h2>Claims <span class="count" id="claims-count"></span></h2>
+          <label class="toggle-switch toggle-small" id="filtered-toggle-wrap" hidden>
+            <span class="toggle-label" id="filtered-toggle-label"></span>
+            <input type="checkbox" id="filtered-toggle">
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        <ul class="claims-list" id="claims-list"></ul>      </div>
     </aside>
   </main>
 

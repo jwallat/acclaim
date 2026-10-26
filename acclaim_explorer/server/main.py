@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -26,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 # acclaim_explorer/server/main.py → go up two levels to reach the repo root
 ROOT = Path(__file__).parent.parent.parent
-RUNS_DIR = ROOT / "outputs" / "alce_eval"
+# Override with ACCLAIM_RUNS_DIR, e.g. ACCLAIM_RUNS_DIR=tooling/outputs/alce_eval
+RUNS_DIR = ROOT / os.environ.get("ACCLAIM_RUNS_DIR", "outputs/alce_eval")
 
 
 def _build_retriever(cfg: AcclaimExplorerConfig, name: str) -> RetrieverBase:
@@ -58,6 +60,17 @@ def _get_retriever(name: str) -> RetrieverBase:
 
 app = FastAPI(title="acclaim explorer")
 
+
+@app.middleware("http")
+async def _no_cache_frontend(request, call_next):
+    # Make browsers revalidate the frontend files (ETag → cheap 304) so edits
+    # show up on a normal reload instead of serving a stale cached copy.
+    response = await call_next(request)
+    if request.url.path.startswith("/acclaim_explorer"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.mount(
     "/acclaim_explorer",
     StaticFiles(directory=str(ROOT / "acclaim_explorer"), html=True),
@@ -65,7 +78,7 @@ app.mount(
 )
 app.mount(
     "/outputs",
-    StaticFiles(directory=str(ROOT / "outputs"), html=True),
+    StaticFiles(directory=str(RUNS_DIR.parent), html=True),
     name="outputs",
 )
 

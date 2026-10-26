@@ -39,9 +39,18 @@ The server exposes two JSON endpoints the frontend uses to load batch runs:
 - **Hover linkage**
   - Hovering an answer sentence outlines every claim that maps to it.
   - Hovering a claim outlines the sentence it maps to.
-  - Mapping uses `claims[*].claim.span`. Claims with `span == [-1, -1]` (the
-    aligner couldn't confidently match a sentence) still appear in the claims
-    list but have no sentence highlight/hover link.
+  - Mapping uses `claims[*].claim.span`. Claims with `span == [-1, -1]`
+    (typically uncited atomic claims, which the aligner has no citation number
+    to place by) are placed by the server via weighted word overlap with the
+    answer's sentences (display only — `claim.span` and metrics are
+    unchanged). Those claims show an "≈ sentence" hint.
+- **"+N filtered" toggle** (claims panel header; only shown when
+  the example has filtered claims) — off: only the claims that survived the
+  claim filter (e.g. check-worthiness), i.e. exactly what the metrics are
+  computed over. On: also lists the dropped claims (dashed, grey
+  `FILTERED · <category>` pill, filter reason) and links them to their most
+  likely sentence; a sentence whose claims were *all* filtered gets a dashed
+  underline. Filtered claims are never judged and count toward no metric.
 - **Theme button** — toggles light/dark. Defaults to your OS preference; saved in `localStorage`.
 - Clicking a `[N]` marker scrolls to the matching cited document and flashes its border.
 - **Ask question** — switches the answer panel into a live query: retrieves

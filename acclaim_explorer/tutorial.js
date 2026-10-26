@@ -17,9 +17,14 @@
       text: "Browse examples. Left/Right arrow keys also work.",
     },
     {
-      selector: "#highlight-toggle",
+      selector: ".toggle-switch:has(#highlight-toggle)",
       title: "Highlight",
       text: "Color answer sentences by support label.",
+    },
+    {
+      selector: "#filtered-toggle-wrap:not([hidden])",
+      title: "Filtered claims",
+      text: "Also show claims dropped by the claim filter (e.g. opinions, meta-statements). They are never judged and don't count toward any metric.",
     },
     {
       selector: "#question-text",
