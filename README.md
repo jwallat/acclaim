@@ -1,57 +1,82 @@
-# acclaim
+<div align="center">
+
+# <img src="icon.png" alt="" height="72" align="center"> acclaim
 
 **Evaluate citation attribution quality of LLM-generated answers.**
 
-`acclaim` extracts claims from an answer, aligns them to the inline citation markers (`[1]`, `[2]`, …), judges whether each claim is actually supported by the cited document, and computes attribution metrics. The result tells you how much of an answer is grounded in its sources and where hallucinations occur.
+<p>
+  <a href="https://github.com/jwallat/acclaim/actions/workflows/tests.yml"><img alt="build" src="https://github.com/jwallat/acclaim/actions/workflows/tests.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/jwallat/acclaim/blob/main/LICENSE"><img alt="license" src="https://img.shields.io/github/license/jwallat/acclaim"></a>
+  <a href="https://pypi.org/project/acclaim/"><img alt="release" src="https://img.shields.io/pypi/v/acclaim?label=release"></a>
+  <a href="https://pypi.org/project/acclaim/"><img alt="python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
+  <!-- Keep in sync with len(METRIC_REGISTRY) in acclaim/metrics/registry.py -->
+  <a href="acclaim/metrics/README.md"><img alt="metrics" src="https://img.shields.io/badge/metrics-11-blueviolet"></a>
+  <!-- DOI badge (add once a Zenodo DOI exists):
+  <a href="https://doi.org/10.5281/zenodo.XXXXXXX"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg"></a>
+  -->
+</p>
+
+</div>
+
+`acclaim` takes an answer with inline citation markers (`[1]`, `[2]`, …)
+and splits it into claims. It drops claims that don't need a source, works
+out which documents each remaining claim cites, and checks whether those
+documents actually support the claim. From that it computes attribution
+metrics, which show how much of the answer is backed by its sources, where
+citations are missing, wrong or point to documents that don't exist, and
+which claims the sources contradict.
 
 ---
 
 ## Pipeline
 
+```text
+answer text + documents
+    │
+    ▼
+1.  Claim extraction    ──► list[Claim]           atomic (LLM) | sentence
+    │
+    ▼
+1b. Claim filtering     ──► list[Claim]           drops opinions, filler, common knowledge
+    │
+    ▼
+2.  Citation alignment  ──► list[AlignedClaim]    claim → cited doc IDs
+    │
+    ▼
+3.  Evidence judgement  ──► list[ClaimResult]     SUPPORTED / REFUTED / UNCLEAR
+    │
+    ▼
+4.  Metrics             ──► {"citation_correctness": …, "coverage": …, "hallucination_rate": …}
 ```
-answer text
-    │
-    ▼
-Claim extraction  ──► list[Claim]
-    │
-    ▼
-Claim filtering   ──► list[Claim]           (drops non-check-worthy claims by default)
-    │
-    ▼
-Citation alignment ──► list[AlignedClaim]   (claim → cited doc IDs)
-    │
-    ▼
-Evidence judgement ──► list[ClaimResult]    (SUPPORTED / REFUTED / UNCLEAR)
-    │
-    ▼
-Metric computation ──► {"coverage": …, "hallucination_rate": …, "citation_correctness": …, …}
-```
+
+Each stage is a pluggable module with a base class, several implementations
+and its own README:
+
+| Stage | Module | Implementations |
+|---|---|---|
+| 1. Claim extraction | [`acclaim/claims/`](acclaim/claims/README.md) | `AtomicClaimExtractor` (default), `SentenceClaimExtractor` |
+| 1b. Claim filtering | [`acclaim/filters/`](acclaim/filters/README.md) | `LLMCheckWorthinessFilter` (default on) |
+| 2. Citation alignment | [`acclaim/alignment/`](acclaim/alignment/README.md) | `LLMCitationAligner`, `SentenceCitationAligner`, `JaccardCitationAligner` |
+| 3. Evidence judgement | [`acclaim/judges/`](acclaim/judges/README.md) | `LiteLLMJudge` (default), `DecisionJudge` |
+| 4. Metrics | [`acclaim/metrics/`](acclaim/metrics/README.md) | 11 metrics, plus relevance-stratified variants |
+
+**New here?** The [end-to-end walkthrough](examples/README.md) follows one
+answer through every stage and shows the real output of each.
 
 ---
 
 ## Installation
 
-
-**Simple usage:**
-
 ```bash
 pip install acclaim
 ```
 
-**From source (development):**
-
-```bash
-pip install -e .
-```
-
-### Environment setup
-
-Python 3.10+ is required. Using mamba or conda:
+**From source (development)**, with Python 3.10+:
 
 ```bash
 mamba create -n acclaim python=3.10
 mamba activate acclaim
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 To also run the experiments in [`library_evals/`](library_evals/README.md),
@@ -64,101 +89,134 @@ python -m spacy download en_core_web_sm
 
 ### API keys
 
-`acclaim` doesn't require any special setup for API keys — just export the
-credential your provider expects before running, e.g.:
+All LLM calls go through [LiteLLM](https://github.com/BerriAI/litellm), which
+reads the standard environment variables of each provider. Export the key for
+the provider you use:
 
 ```bash
-export OPENAI_API_KEY=sk-...
-# or ANTHROPIC_API_KEY, OPENROUTER_API_KEY, etc., depending on judge.model
+export OPENROUTER_API_KEY=...   # used by the default config
+# or OPENAI_API_KEY, ANTHROPIC_API_KEY, ... depending on the configured models
 ```
 
-All LLM calls go through LiteLLM, which reads these standard provider env
-vars automatically, so a plain `pip install acclaim` works with nothing
-else to configure. Config YAML files can also reference a var explicitly
-with `${VAR_NAME}` (see `judge.api_key: ${ANTHROPIC_API_KEY}` below),
-resolved from the environment at load time.
+Config YAML files can also reference a variable directly with `${VAR_NAME}`
+(e.g. `api_key: ${ANTHROPIC_API_KEY}`). The variable is read from the
+environment when the config is loaded.
 
-If you'd rather keep keys in a file instead of exporting them each session,
-copy `.env.example` to `.env` and install with `pip install -e ".[dev]"`
-(which pulls in `python-dotenv`) — `.env` is then loaded automatically
-whenever `acclaim` is imported. This is purely a convenience for local
-development; it's a no-op if `python-dotenv` isn't installed, and `.env` is
-gitignored and never committed.
+If you'd rather keep keys in a file, copy `.env.example` to `.env` and install
+with `pip install -e ".[dev]"`, which pulls in `python-dotenv`. The `.env` file
+is then loaded automatically whenever `acclaim` is imported. Without
+`python-dotenv` this does nothing, and `.env` is gitignored.
 
 ---
 
 ## Quick start
 
-The default config uses a Gemma 4 model from OpenRouter, so export the according API key:
+This is a minimal example on how to use the library. After installation (see above) please follow these steps:
 
-```shell
-export OPENROUTER_API_KEY=...
-```
+The default config uses Gemma 4 through OpenRouter, so set
+`OPENROUTER_API_KEY` first.
 
 ```python
 from acclaim import evaluate, load_config, Document
 
 documents = [
-    Document(doc_id="doc1", text="Paris is the capital of France."),
-    Document(doc_id="doc2", text="The Eiffel Tower was completed in 1889."),
+    Document(doc_id="doc1", text="The Eiffel Tower was completed in 1889 for the World's Fair."),
+    Document(doc_id="doc2", text="The Eiffel Tower is 330 metres tall."),
 ]
 
-answer = "Paris is the capital of France [1]. The Eiffel Tower was built in 1799 [2]."
+answer = "The Eiffel Tower was completed in 1889 [1]. It is 300 metres tall [2]."
 
-config = load_config()           # uses config/default.yaml
-result = evaluate(answer, documents, config=config)
+config = load_config()           # bundled acclaim/config/default.yaml
+results = evaluate(answer, documents, config=config)
 
-result.pretty_print()
-print(result.metrics)
-# {"citation_correctness": 0.5, "coverage": 1.0, "hallucination_rate": 0.0, ...}
+results.pretty_print()
+print(results.metrics)
+# {'citation_correctness': 0.5, 'citation_lengths': 10.0, 'citation_number': 2.0,
+#  'coverage': 1.0, 'cvcp': 0.0, 'hallucination_rate': 0.0,
+#  'supported_claim_rate': 0.5, 'token_overlap': 0.725}
 ```
 
-The pipeline stages are available for inspection via `result.steps`:
+The second claim is `REFUTED` (the document says 330 m), so only half of the
+cited claims are supported.
+
+Every intermediate result is available in `results.steps`:
 
 ```python
-result.steps["claims"]          # list[Claim]
-result.steps["aligned_claims"]  # list[AlignedClaim]
-result.steps["claim_results"]   # list[ClaimResult]
+results.steps["claims"]            # list[Claim]           all extracted claims
+results.steps["filter_decisions"]  # list[FilterDecision]  keep/drop + category + reason
+results.steps["filtered_claims"]   # list[Claim]           claims that passed the filters
+results.steps["aligned_claims"]    # list[AlignedClaim]
+results.steps["claim_results"]     # list[ClaimResult]
+results.steps["citation_to_doc"]   # dict[int, str]
 ```
 
-Save the result (claims, metrics, and run metadata) to JSONL:
+Save the results (claims, filter decisions, metrics, and the package version
+and config) to JSONL:
 
 ```python
-result.to_jsonl("results.jsonl")
+results.to_jsonl("results.jsonl")                      # add include_steps=True for a full dump
 ```
 
-`evaluate_batch()` results support the same method — one line per item plus a
-trailing aggregate-metrics summary line:
+### Batch evaluation
 
 ```python
+from acclaim import BatchExample, evaluate_batch
+
+examples = [
+    BatchExample(answer=answer, documents=documents, question="How tall is the Eiffel Tower?"),
+    # ...
+]
+
 batch_result = evaluate_batch(examples, config=config)
-batch_result.to_jsonl("batch_results.jsonl")
+batch_result.aggregate_metrics   # mean of each metric over the examples
+batch_result.filter_summary      # claim counts, drop rate, per-category counts
+batch_result.to_jsonl("batch_results.jsonl")   # one line per item + a trailing aggregate line
 ```
+
+The batch JSONL files can be browsed in the
+[`acclaim_explorer`](acclaim_explorer/README.md) web app.
+
+### Optional inputs
+
+- **`question=`**: the question the answer responds to. Claim filtering uses
+  it, and it is required for
+  [relevance-stratified metrics](acclaim/metrics/README.md#relevance-stratified-metrics).
+- **`citation_to_doc=`**: by default `[N]` maps to `documents[N-1]`. If your
+  document IDs don't follow that order, pass an explicit mapping:
+
+  ```python
+  evaluate(answer, documents, citation_to_doc={1: "doc_paris", 2: "doc_eiffel"})
+  ```
+
+- **Component overrides**: `claim_extractor=`, `claim_filters=`, `aligner=` and
+  `judge=` take instances (including your own subclasses) and replace the
+  component built from the config. See the module READMEs for examples.
 
 ---
 
 ## Configuration
 
-Configuration is YAML-based. `load_config()` with no arguments reads the bundled `config/default.yaml`:
+Configuration is in YAML. Calling `load_config()` without arguments reads the
+bundled [`acclaim/config/default.yaml`](acclaim/config/default.yaml), which
+documents every option. To load your own file, use
+`load_config("my_config.yaml")`. The main options:
 
 ```yaml
-# Claim extraction strategy
-# "sentence"  — one claim per sentence, no LLM call (fast)
-# "atomic"    — LLM decomposes sentences into sub-claims (more precise, slower)
-claim_extractor: sentence
+claim_extractor: atomic          # atomic | sentence                 → acclaim/claims/
+claim_filters: [check_worthiness]  # [] disables filtering          → acclaim/filters/
+aligner: null                    # null = auto (atomic→llm, sentence→sentence) → acclaim/alignment/
 
-# Evidence judge (always LiteLLM-based)
-judge:
-  model: gpt-4o-mini
-  api_base: null          # e.g. "http://localhost:8000/v1" for a local vLLM server
-  api_key: null           # falls back to OPENAI_API_KEY env var when null
+judge:                           # evidence judge                    → acclaim/judges/
+  model: openrouter/google/gemma-4-26b-a4b-it
+  api_base: null                 # e.g. http://localhost:8000/v1 for local vLLM
+  api_key: null                  # null = provider env var
   temperature: 0.0
-  max_tokens: 512
-  max_retries: 3
+  max_tokens: 2048
 
-# Metrics to compute. citation_precision / citation_recall / citation_f1
-# are opt-in because they run extra LLM judges; add them here to enable.
-metrics:
+concurrency:
+  max_workers: 10                # parallel LLM calls (per claim and per batch item)
+
+metrics:                         # → acclaim/metrics/
   - citation_correctness
   - citation_lengths
   - citation_number
@@ -169,20 +227,20 @@ metrics:
   - token_overlap
 ```
 
-Load a custom config file:
-
-```python
-config = load_config("config/my_config.yaml")
-```
+You only need to configure one LLM endpoint. The LLM-based components
+(`atomic_claim_extractor`, `check_worthiness_filter`, `llm_aligner`, and the
+auxiliary judges) use the `judge:` connection settings unless their own
+config section overrides them.
 
 ### LLM provider
 
-The judge uses [LiteLLM](https://github.com/BerriAI/litellm) and therefore supports 100+ model providers (OpenAI, Anthropic, Ollama, local vLLM, etc.) through a unified interface.
+Any model that [LiteLLM](https://docs.litellm.ai/docs/providers) supports can
+be used:
 
 ```yaml
 # Anthropic
 judge:
-  model: claude-3-5-sonnet-20241022
+  model: anthropic/claude-sonnet-5-5
   api_key: ${ANTHROPIC_API_KEY}
 
 # Local vLLM server
@@ -192,172 +250,96 @@ judge:
   api_key: dummy
 ```
 
-### Citation mapping
-
-By default, citation marker `[N]` maps to `documents[N-1]` (1-indexed position).  Override with an explicit mapping if your document IDs don't follow positional numbering:
-
-```python
-result = evaluate(
-    answer,
-    documents,
-    citation_to_doc={1: "doc_paris", 2: "doc_eiffel"},
-    config=config,
-)
-```
-
-### Claim filtering
-
-Claims are filtered before alignment, so the dropped ones don't count toward any metric. The bundled `default.yaml` enables the `check_worthiness` filter. Set `claim_filters: []` to turn filtering off, or pass `claim_filters=[]` to `evaluate()`. Filters run in the order listed:
-
-```yaml
-claim_filters:
-  - check_worthiness
-
-check_worthiness_filter:
-  model: null              # null = reuse judge.model
-  drop_categories: [NOT_A_CLAIM, SUBJECTIVE, UNDERSPECIFIED, COMMON_KNOWLEDGE]
-```
-
-`check_worthiness` asks an LLM to put each claim into one category:
-
-- **Dropped by default:** `NOT_A_CLAIM`, `SUBJECTIVE`, `UNDERSPECIFIED`, `COMMON_KNOWLEDGE`
-- **Kept:** `QUANTITY`, `EVENT_OR_HISTORICAL`, `ATTRIBUTION_OR_QUOTE`, `CAUSAL_OR_CORRELATION`, `SCIENTIFIC_OR_TECHNICAL`, `RULE_OR_POLICY`, `PREDICTION`, `OTHER_FACTUAL`
-
-The categories draw on ClaimBuster, the Full Fact claim schema, Wikipedia's *Citation Needed* taxonomy, and VeriScore. If the LLM call fails, the filter keeps all claims.
-
-Every decision (kept and dropped, with category and reason) is available as `result.filter_decisions` and is written to `to_dict()` / `to_jsonl()` output by default. `pretty_print()` lists the dropped claims. For `evaluate_batch()`, `result.filter_summary` (also written to the JSONL aggregate line) holds claim counts, the drop rate, and kept/dropped counts per category:
-
-```python
-result = evaluate_batch(examples, config=config)
-result.filter_summary
-# {"claims_extracted": 595, "claims_kept": 545, "claims_dropped": 50, "drop_rate": 0.084,
-#  "items_with_drops": 24, "items_all_dropped": 1,
-#  "by_filter": {"check_worthiness": {"seen": 595, "dropped": 50,
-#                "categories": {"SUBJECTIVE": {"kept": 0, "dropped": 33}, ...}}}}
-```
-
-To write a custom filter, subclass `ClaimFilter` and pass it directly:
-
-```python
-from acclaim.filters import ClaimFilter, FilterDecision
-
-class MinLengthFilter(ClaimFilter):
-    name = "min_length"
-
-    def decide(self, claims, answer, question=None):
-        return [
-            FilterDecision(claim=c, keep=len(c.text.split()) >= 4, filter_name=self.name)
-            for c in claims
-        ]
-
-result = evaluate(answer, documents, claim_filters=[MinLengthFilter()])
-```
-
----
-
-## Running tests
-
-### Unit tests
-
-Unit tests mock all LLM calls and run without any external service:
-
-```bash
-pytest acclaim/tests/unit/
-```
-
-### End-to-end tests (local vLLM)
-
-E2E tests run the full pipeline against a local vLLM server.
-
-**Option 1 – CPU (for quick smoke-testing):**
-
-```bash
-bash start_vllm.sh
-pytest acclaim/tests/e2e/ -m vllm -s -v
-```
-
-**Option 2 – GPU via SLURM (recommended):**
-
-The `run_e2e_tests.sh` script starts a vLLM server inside the SLURM job, polls the `/health` endpoint until ready, runs pytest, then tears the server down automatically:
-
-```bash
-# Interactive
-srun --gpus=1 --pty bash run_e2e_tests.sh
-
-# Batch
-sbatch --gpus=1 run_e2e_tests.sh
-```
-
-**Optional env vars for the E2E script:**
-
-| Variable | Default | Description |
-|---|---|---|
-| `VLLM_MODEL` | `meta-llama/Meta-Llama-3-8B-Instruct` | Model to load |
-| `VLLM_PORT` | `8000` | Server port |
-| `PYTEST_ARGS` | `-s -v` | Extra pytest arguments |
+The evidence judge can also run on a **decision model** (`backend: decision`)
+instead of a chat LLM. See the [judges README](acclaim/judges/README.md#decisionjudge).
 
 ---
 
 ## Metrics
 
-`citation_precision`, `citation_recall` and `citation_f1` are not in the default `metrics:` list because they make extra LLM calls on top of the evidence judge. Add them to your config to enable them.
-
 | Metric key | Description |
 |---|---|
-| `citation_precision` | Mean per-citation score from an LLM judge assessing whether each cited snippet is relevant to the claim it supports (LongCite-style) |
-| `citation_recall` | Mean per-claim score from an LLM judge assessing whether cited snippets fully, partially, or not at all support the claim |
-| `citation_f1` | Harmonic mean of `citation_precision` and `citation_recall` |
-| `citation_correctness` | Fraction of *cited* claims whose support label is SUPPORTED |
-| `citation_lengths` | Average token count of unique claim texts that have at least one citation |
-| `citation_number` | Total count of inline `[N]` citation markers found in the answer text |
-| `coverage` | Fraction of all claims that have at least one citation |
-| `cvcp` | Coefficient of Variation of Citation Positions — whether citations cluster at sentence ends vs. spread throughout |
-| `hallucination_rate` | Fraction of citation references pointing to document IDs not present among the valid documents |
-| `supported_claim_rate` | Fraction of *all* claims (cited or not) whose support label is SUPPORTED |
-| `token_overlap` | Average Jaccard token overlap between each claim and its best-matching sentence in each cited document |
+| `citation_correctness` | Fraction of *cited* claims labelled SUPPORTED |
+| `supported_claim_rate` | Fraction of *all* claims labelled SUPPORTED |
+| `coverage` | Fraction of claims with at least one citation |
+| `hallucination_rate` | Fraction of citation references that point to documents that don't exist |
+| `citation_number` | Number of `[N]` markers in the answer |
+| `citation_lengths` | Average token length of cited claims |
+| `cvcp` | Coefficient of Variation of Citation Positions within sentences |
+| `token_overlap` | Jaccard overlap between each cited claim and its best-matching document sentence |
+| `citation_precision`* | LLM-judged relevance of each citation to its claim (LongCite-style) |
+| `citation_recall`* | LLM-judged full / partial / no support of each claim by its citations |
+| `citation_f1`* | Harmonic mean of citation precision and recall |
+
+\* Opt-in, because they make extra LLM calls. The
+[metrics README](acclaim/metrics/README.md) has exact definitions, explains
+relevance stratification and shows how to add a custom metric.
 
 ---
 
-## Project structure
+## Running tests
 
+Unit tests mock all LLM calls and need no external service:
+
+```bash
+pytest acclaim/tests/unit/
 ```
+
+End-to-end tests run the full pipeline against an OpenAI-compatible vLLM
+server. They are skipped automatically when the server can't be reached:
+
+```bash
+vllm serve meta-llama/Meta-Llama-3-8B-Instruct --port 8000 &
+
+export VLLM_API_BASE=http://localhost:8000/v1                 # default
+export VLLM_MODEL=openai/meta-llama/Meta-Llama-3-8B-Instruct  # LiteLLM model name
+pytest acclaim/tests/e2e/ -m vllm -s -v
+```
+
+---
+
+## Related tools
+
+- [`examples/`](examples/README.md): annotated end-to-end walkthrough and a
+  runnable script.
+- [`acclaim_explorer/`](acclaim_explorer/README.md): a web app for browsing
+  batch results claim by claim. It also has a live mode that retrieves
+  documents, generates an answer and evaluates it. [`DOCKER.md`](DOCKER.md)
+  covers running it in Docker.
+- [`library_evals/`](library_evals/README.md): experiments that check each
+  pipeline component against human judgement (atomic claims, citation
+  alignment, judge agreement).
+
+---
+
+<!-- ## Project structure
+
+```text
 acclaim/
-├── evaluate.py          Main entry point (evaluate(), evaluate_batch())
-├── batch.py             Batch evaluation over multiple examples
-├── concurrency.py       Thread-pool helpers for parallel LLM calls
-├── text_utils.py        Sentence splitting / tokenization utilities
-├── data_models.py       Immutable domain dataclasses
-├── claims/              Claim extraction strategies
-│   ├── sentence.py      SentenceClaimExtractor (default, no LLM)
-│   └── atomic.py        AtomicClaimExtractor (LLM-based)
-├── filters/             Optional claim filters (between extraction and alignment)
-│   ├── base.py          ClaimFilter / FilterDecision
-│   └── check_worthiness.py  LLMCheckWorthinessFilter + ClaimCategory taxonomy
-├── alignment/           Citation alignment strategies
-│   ├── sentence.py      SentenceCitationAligner (auto-selected for sentence claims)
-│   └── jaccard.py       JaccardCitationAligner (auto-selected for atomic claims)
-├── judges/
-│   ├── litellm.py       LiteLLMJudge (evidence support judge)
-│   ├── citation_precision.py  LiteLLMPrecisionJudge
-│   ├── citation_recall.py     LiteLLMRecallJudge
-│   └── relevance.py     LiteLLMRelevanceJudge (claim relevance stratification)
-├── metrics/
-│   ├── citation_precision.py  CitationPrecisionMetric
-│   ├── citation_recall.py     CitationRecallMetric
-│   ├── citation_f1.py         CitationF1Metric
-│   ├── correctness.py         CitationCorrectness
-│   ├── citation_lengths.py    CitationLengths
-│   ├── citation_number.py     CitationNumber
-│   ├── coverage.py            CitationCoverage
-│   ├── cvcp.py                CVCPMetric
-│   ├── hallucination.py       HallucinationRate
-│   ├── supported_claim_rate.py SupportedClaimRate
-│   ├── token_overlap.py       TokenOverlap
-│   ├── stratified.py          StratifiedMetric (relevance-stratified wrapper)
-│   └── registry.py            Metric registry
-├── citations/
-│   └── parser.py        Citation marker parsing utilities
-└── config/
-    ├── default.yaml     Default configuration
-    └── load.py          EvalConfig / JudgeConfig dataclasses + load_config()
+├── evaluate.py            evaluate(): pipeline entry point + component factories
+├── batch.py               evaluate_batch(): batch evaluation and aggregation
+├── data_models.py         Immutable dataclasses (Claim, Document, EvaluationResult, ...)
+├── llm_client.py          LiteLLM wrapper with retries / JSON parsing
+├── decision_client.py     Client for decision models (OpenRouter Decisions API)
+├── concurrency.py         Thread-pool helpers for parallel LLM calls
+├── text_utils.py          Sentence splitting / tokenization
+├── citations/parser.py    [N] marker parsing, citation → doc ID mapping
+├── claims/                Stage 1: claim extraction        (README)
+├── filters/               Stage 1b: claim filtering        (README)
+├── alignment/             Stage 2: citation alignment      (README)
+├── judges/                Stage 3: evidence + auxiliary judges (README)
+├── metrics/               Stage 4: metrics + registry      (README)
+├── config/
+│   ├── default.yaml       Default configuration (documents every option)
+│   └── load.py            EvalConfig / JudgeConfig + load_config()
+└── tests/                 unit/ (mocked) and e2e/ (vLLM)
+examples/                  End-to-end walkthrough
+acclaim_explorer/          Results browser web app
+library_evals/             Component evaluation experiments
 ```
+
+--- -->
+
+## License
+
+[MIT](LICENSE)
