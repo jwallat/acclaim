@@ -201,6 +201,8 @@ Run on 2026-10-28: 100 ASQA answers (`--n 100 --seed 42`) from
   coverage for every model; we have not yet checked how much of the
   sentence-level gap is the top-3 claim selection or NLI strictness rather
   than missing content (`inspect_coverage.py` is the tool for that).
+- Based on the findings, we would recommend gemma-4-26b-a4b as the default choice and gpt-6-luna as the best, but    
+  proprietary model.
 
 ## Manual annotations
 
