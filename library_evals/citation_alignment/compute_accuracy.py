@@ -1,12 +1,12 @@
 """
 Compute citation-alignment accuracy from the filled-in annotation sheet.
 
-Reads annotation_sheet.csv (correct column filled in with y/n, 1/0, or
+Reads manual_annotations/annotation_sheet.csv (correct column filled in with y/n, 1/0, or
 similar) and reports the percentage of *labeled* atomic claims whose
 predicted citation_doc_ids matched their true source sentence's marker(s),
 plus a per-model breakdown for sanity-checking. Rows with a blank correct
 column are skipped, so this can be run on partially-annotated sheets to
-check progress. Results are also written to accuracy_results.json.
+check progress. Results are also written to results/accuracy_results.json.
 
 Usage:
     python compute_accuracy.py
@@ -21,8 +21,8 @@ import json
 from pathlib import Path
 
 _HERE = Path(__file__).parent
-_DEFAULT_SHEET = _HERE / "annotation_sheet.csv"
-_DEFAULT_OUTPUT = _HERE / "accuracy_results.json"
+_DEFAULT_SHEET = _HERE / "manual_annotations" / "annotation_sheet.csv"
+_DEFAULT_OUTPUT = _HERE / "results" / "accuracy_results.json"
 
 _TRUE_VALUES = {"y", "yes", "1", "true", "correct"}
 _FALSE_VALUES = {"n", "no", "0", "false", "incorrect"}
@@ -71,6 +71,7 @@ def compute_accuracy(sheet_path: Path = _DEFAULT_SHEET, output_path: Path = _DEF
         "per_model": per_model,
     }
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
     print(f"Results written to {output_path}")

@@ -10,7 +10,7 @@ so a human can mark whether the predicted citation_doc_ids actually match the
 true source sentence's marker(s).
 
 Usage:
-    python build_annotation_sheet.py                     # writes claim_pairs.jsonl + annotation_sheet.csv
+    python build_annotation_sheet.py                     # writes data/claim_pairs.jsonl + manual_annotations/annotation_sheet.csv
     python build_annotation_sheet.py --input my_sampled.jsonl
 """
 
@@ -22,9 +22,9 @@ import json
 from pathlib import Path
 
 _HERE = Path(__file__).parent
-_DEFAULT_INPUT = _HERE / "sampled_answers.jsonl"
-_DEFAULT_OUTPUT = _HERE / "claim_pairs.jsonl"
-_DEFAULT_SHEET = _HERE / "annotation_sheet.csv"
+_DEFAULT_INPUT = _HERE / "data" / "sampled_answers.jsonl"
+_DEFAULT_OUTPUT = _HERE / "data" / "claim_pairs.jsonl"
+_DEFAULT_SHEET = _HERE / "manual_annotations" / "annotation_sheet.csv"
 
 
 def _load_examples(path: Path) -> list[dict]:
@@ -60,6 +60,7 @@ def build_claim_pairs(examples: list[dict]) -> list[dict]:
 
 
 def write_annotation_sheet(pairs: list[dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
@@ -100,6 +101,7 @@ def main() -> None:
     examples = _load_examples(args.input)
     pairs = build_claim_pairs(examples)
 
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         for pair in pairs:
             f.write(json.dumps(pair, ensure_ascii=False) + "\n")

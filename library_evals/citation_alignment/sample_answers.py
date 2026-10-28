@@ -1,14 +1,14 @@
 """
 Sample 50 ASQA answers (no duplicate questions) across the three evaluated models.
 
-The three outputs/alce_eval/asqa_*.jsonl files all evaluate the exact same set
-of ASQA questions (same order, same indices) with three different models. To
-get 50 unique-question examples with some model diversity, each question index
-is assigned to exactly one of the three models (seeded shuffle, ~evenly split),
-and one question is dropped to land on exactly 50.
+The three tooling/outputs/alce_eval/asqa_*.jsonl files (gitignored, not in the
+repo) all evaluate the exact same set of ASQA questions (same order, same
+indices) with three different models. A seeded shuffle picks n question
+indices, and the selected indices (in sorted order) are assigned to the three
+models round-robin, so each question appears for exactly one model.
 
 Usage:
-    python sample_answers.py                      # writes sampled_answers.jsonl
+    python sample_answers.py                      # writes data/sampled_answers.jsonl
     python sample_answers.py --n 50 --seed 42      # defaults shown
 """
 
@@ -20,9 +20,9 @@ import random
 from pathlib import Path
 
 _HERE = Path(__file__).parent
-_ALCE_EVAL_DIR = _HERE.parent.parent / "outputs" / "alce_eval"
+_ALCE_EVAL_DIR = _HERE.parent.parent / "tooling" / "outputs" / "alce_eval"
 _MODELS = ["gemma-4-e4b", "llama-3.1-8b", "qwen3-8b"]
-_DEFAULT_OUTPUT = _HERE / "sampled_answers.jsonl"
+_DEFAULT_OUTPUT = _HERE / "data" / "sampled_answers.jsonl"
 
 
 def _load_items(path: Path) -> list[dict]:
@@ -61,8 +61,7 @@ def sample_answers(
     rng.shuffle(indices)
     selected_indices = sorted(indices[:n])
 
-    # Assign each selected question index to one of the three models, round-robin
-    # over a shuffled model order per index for an even, seeded split.
+    # Assign the selected question indices to the three models round-robin.
     assignment_order = list(_MODELS)
     examples = []
     for i, q_idx in enumerate(selected_indices):
@@ -90,6 +89,7 @@ def main() -> None:
 
     examples = sample_answers(args.alce_eval_dir, args.n, args.seed)
 
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         for ex in examples:
             f.write(json.dumps(ex, ensure_ascii=False) + "\n")

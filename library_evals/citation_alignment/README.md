@@ -10,35 +10,36 @@ marker(s). This is a heuristic, not ground truth — a wrong sentence match
 silently misattributes a claim to the wrong source document, which then
 propagates into every downstream metric (precision, recall, F1, etc.).
 
-This folder produces the human-annotated number that backs the citation
+This folder produces the human-annotated number intended for the citation
 alignment paragraph in the paper: the percentage of atomic claims where the
 predicted citation marker(s) actually match the marker(s) on the claim's
 *true* source sentence in the answer.
 
 ## Pipeline
 
-1. **`sample_answers.py`** → `sampled_answers.jsonl`
+1. **`sample_answers.py`** → `data/sampled_answers.jsonl`
    Samples 50 ASQA answers with no duplicate questions. The three model
-   outputs (`outputs/alce_eval/asqa_{gemma-4-e4b,llama-3.1-8b,qwen3-8b}.jsonl`)
-   evaluate the identical 51 ASQA questions in the same order, so each of the
-   50 sampled question indices is assigned to exactly one model (seeded
-   shuffle, ~evenly split across the three), and one question is dropped to
-   land on exactly 50. No extraction or alignment is re-run — the sampled
-   `claims` are copied as-is from the existing evaluated outputs, since
-   `JaccardCitationAligner` already overwrote each claim's `span` with its
-   matched sentence's span and populated `citation_doc_ids`.
+   outputs (`tooling/outputs/alce_eval/asqa_{gemma-4-e4b,llama-3.1-8b,qwen3-8b}.jsonl`)
+   evaluate the identical 50 ASQA questions in the same order. A seeded
+   shuffle selects the question indices (with the default `--n 50`, all of
+   them), and the selected indices are assigned to the three models
+   round-robin (17 / 17 / 16), so each question appears for exactly one model.
+   No extraction or alignment is re-run — the sampled `claims` are copied
+   as-is from the existing evaluated outputs, since `JaccardCitationAligner`
+   already overwrote each claim's `span` with its matched sentence's span and
+   populated `citation_doc_ids`.
 
-2. **`build_annotation_sheet.py`** → `claim_pairs.jsonl` + `annotation_sheet.csv`
+2. **`build_annotation_sheet.py`** → `data/claim_pairs.jsonl` + `manual_annotations/annotation_sheet.csv`
    Expands each sampled answer into one row per atomic claim.
 
 3. **Manual annotation** — fill in the `correct` column of
    `annotation_sheet.csv` (e.g. `y`/`n`).
 
-4. **`compute_accuracy.py`** → `accuracy_results.json`
+4. **`compute_accuracy.py`** → `results/accuracy_results.json`
    Reads the filled-in sheet and reports overall accuracy plus a per-model
    breakdown (diagnostic only — the paper number is the overall accuracy).
 
-## `annotation_sheet.csv` columns
+## `manual_annotations/annotation_sheet.csv` columns
 
 | Column | Meaning |
 |---|---|
@@ -57,11 +58,26 @@ the true source sentence, the check is trivial; the interesting failure mode
 is when the aligner picked the *wrong* sentence (`matched_sentence_text` !=
 true source) — those should be marked incorrect if the doc ids differ.
 
+
+## Results
+
+95 of 412 claims were manually labelled (rows
+0–98, i.e. examples 0–15; 4 rows skipped), from `compute_accuracy.py`:
+
+| Model         | Labelled | Accuracy        |
+|---------------|---------:|-----------------|
+| gemma-4-e4b   | 24       | 1.000           |
+| llama-3.1-8b  | 33       | 0.939           |
+| qwen3-8b      | 38       | 1.000           |
+| **Overall**   | **95**   | **0.979** (93/95) |
+
 ## Running it
 
+From this directory (`library_evals/citation_alignment/`):
+
 ```bash
-mamba run -n acclaim python sample_answers.py
-mamba run -n acclaim python build_annotation_sheet.py
-# ... fill in the `correct` column in annotation_sheet.csv by hand ...
-mamba run -n acclaim python compute_accuracy.py
+micromamba run -n acclaim python sample_answers.py
+micromamba run -n acclaim python build_annotation_sheet.py --sheet manual_annotations/new_annotation_sheet.csv
+# ... fill in the `correct` column by hand ...
+micromamba run -n acclaim python compute_accuracy.py            # scores manual_annotations/annotation_sheet.csv
 ```
