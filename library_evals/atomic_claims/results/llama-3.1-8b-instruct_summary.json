@@ -1,0 +1,64 @@
+{
+  "n_examples": 100,
+  "claim_count": {
+    "mean": 6.27,
+    "std": 3.2337439601799027,
+    "n": 100,
+    "frac_ge_0_9": 1.0
+  },
+  "faithfulness_mean": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "faithful_fraction": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "coverage_sentence": {
+    "mean": 0.49623809523809526,
+    "std": 0.41109639643948825,
+    "n": 100,
+    "frac_ge_0_9": 0.32
+  },
+  "coverage_whole": {
+    "mean": 0.7370997152615746,
+    "std": 0.39516999894874943,
+    "n": 100,
+    "frac_ge_0_9": 0.66
+  },
+  "sentence_claim_coverage": {
+    "mean": 0.9801428571428572,
+    "std": 0.09422088921103866,
+    "n": 100,
+    "frac_ge_0_9": 0.95
+  },
+  "atomicity": {
+    "mean": 0.9949603174603174,
+    "std": 0.030448974082483257,
+    "n": 100,
+    "frac_ge_0_9": 0.97
+  },
+  "non_redundancy": {
+    "mean": 0.9489666698036264,
+    "std": 0.12823347375580135,
+    "n": 100,
+    "frac_ge_0_9": 0.85
+  },
+  "config": {
+    "nli_model": "cross-encoder/nli-deberta-v3-large",
+    "threshold": 0.5,
+    "metrics": [
+      "atomicity",
+      "coverage",
+      "coverage_whole",
+      "non_redundancy",
+      "sentence_claim_coverage"
+    ],
+    "coverage_topk": 3,
+    "input": "/home/jonaswallat/git/acclaim/library_evals/atomic_claims/predictions/llama-3.1-8b-instruct.jsonl"
+  }
+}

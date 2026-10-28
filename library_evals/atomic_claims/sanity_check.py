@@ -1,13 +1,13 @@
 """
 Sanity checks for the intrinsic eval metrics.
 
-Implements the three "Verification" cases from PLAN.md:
+Three checks that the metrics respond the way they should:
 
     1. predicted_claims = [whole answer]
        expectation: faithfulness ~ 1.0, atomicity low (one big claim with
        many conjunctions), coverage_sentence ~ 1.0 (the single claim
        trivially entails every sentence).
-    2. predicted_claims = sentences from a *different* answer
+    2. predicted_claims = claims extracted from a *different* answer
        expectation: faithfulness ~ 0.
     3. NLI spot-check on 20 hand-picked (premise, hypothesis) pairs that
        exercise negation and numbers.

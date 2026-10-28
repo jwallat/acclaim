@@ -4,12 +4,11 @@ predicted atomic claims to JSONL for downstream intrinsic evaluation.
 
 Usage:
     python run_extractor.py \\
-        --input /home/wallat/citation_eval/ALCE/result/asqa-Meta-Llama-3-8B-Instruct-gtr-shot1-ndoc3-43.json \\
+        --input path/to/asqa-Llama-3.1-8B-Instruct-gtr-shot2-ndoc5-43.json \\
         --output predicted_claims.jsonl \\
-        --n 500 \\
+        --n 100 \\
         --seed 42 \\
-        --model openai/meta-llama/Meta-Llama-3-8B-Instruct \\
-        --api-base http://localhost:8000/v1
+        --model openrouter/google/gemma-4-26b-a4b-it
 """
 
 from __future__ import annotations
@@ -44,10 +43,6 @@ def _silence_litellm() -> None:
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_INPUT = Path(
-    "/home/wallat/citation_eval/ALCE/result/"
-    "asqa-Meta-Llama-3-8B-Instruct-gtr-shot1-ndoc3-43.json"
-)
 DEFAULT_OUTPUT = Path(__file__).parent / "predicted_claims.jsonl"
 
 
@@ -90,7 +85,12 @@ def _extract_one(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument(
+        "--input",
+        type=Path,
+        required=True,
+        help="ALCE result JSON ({'args': ..., 'data': [...]}); see README 'Data'.",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--n", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
@@ -101,7 +101,12 @@ def main() -> None:
         help="LiteLLM model id. Use 'openai/<hf-name>' for a local vLLM server.",
     )
     parser.add_argument("--api-base", type=str, default="http://localhost:8000/v1")
-    parser.add_argument("--api-key", type=str, default="dummy")
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=os.environ.get("API_KEY") or os.environ.get("OPENROUTER_API_KEY") or "dummy",
+        help="Defaults to $API_KEY, then $OPENROUTER_API_KEY (keeps keys out of argv).",
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=12196)
     parser.add_argument("--max-retries", type=int, default=3)

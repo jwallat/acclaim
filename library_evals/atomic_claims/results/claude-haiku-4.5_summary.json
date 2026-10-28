@@ -1,0 +1,64 @@
+{
+  "n_examples": 100,
+  "claim_count": {
+    "mean": 6.53,
+    "std": 3.0576298010060015,
+    "n": 100,
+    "frac_ge_0_9": 1.0
+  },
+  "faithfulness_mean": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "faithful_fraction": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "coverage_sentence": {
+    "mean": 0.5443095238095238,
+    "std": 0.40468611265182136,
+    "n": 100,
+    "frac_ge_0_9": 0.35
+  },
+  "coverage_whole": {
+    "mean": 0.803438429881353,
+    "std": 0.3512787899319223,
+    "n": 100,
+    "frac_ge_0_9": 0.75
+  },
+  "sentence_claim_coverage": {
+    "mean": 0.9809761904761904,
+    "std": 0.09178161932684836,
+    "n": 100,
+    "frac_ge_0_9": 0.95
+  },
+  "atomicity": {
+    "mean": 0.9985714285714287,
+    "std": 0.01421410624438029,
+    "n": 100,
+    "frac_ge_0_9": 0.99
+  },
+  "non_redundancy": {
+    "mean": 0.9527994227994228,
+    "std": 0.13858044421968033,
+    "n": 100,
+    "frac_ge_0_9": 0.88
+  },
+  "config": {
+    "nli_model": "cross-encoder/nli-deberta-v3-large",
+    "threshold": 0.5,
+    "metrics": [
+      "atomicity",
+      "coverage",
+      "coverage_whole",
+      "non_redundancy",
+      "sentence_claim_coverage"
+    ],
+    "coverage_topk": 3,
+    "input": "/home/jonaswallat/git/acclaim/library_evals/atomic_claims/predictions/claude-haiku-4.5.jsonl"
+  }
+}

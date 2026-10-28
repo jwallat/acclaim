@@ -1,10 +1,10 @@
 {
-  "n_examples": 20,
+  "n_examples": 100,
   "claim_count": {
-    "mean": 8.75,
-    "std": 5.127133702177075,
-    "n": 20,
-    "frac_ge_0_9": 0.9
+    "mean": 7.09,
+    "std": 3.2406635123073175,
+    "n": 100,
+    "frac_ge_0_9": 1.0
   },
   "faithfulness_mean": {
     "mean": null,
@@ -19,34 +19,34 @@
     "frac_ge_0_9": null
   },
   "coverage_sentence": {
-    "mean": 0.5661309523809523,
-    "std": 0.3205084880332509,
-    "n": 20,
-    "frac_ge_0_9": 0.25
+    "mean": 0.5509761904761905,
+    "std": 0.3896751503356554,
+    "n": 100,
+    "frac_ge_0_9": 0.34
   },
   "coverage_whole": {
-    "mean": null,
-    "std": null,
-    "n": 0,
-    "frac_ge_0_9": null
+    "mean": 0.8627931768885173,
+    "std": 0.30732701238574006,
+    "n": 100,
+    "frac_ge_0_9": 0.83
   },
   "sentence_claim_coverage": {
-    "mean": 0.7813492063492063,
-    "std": 0.3844128134392848,
-    "n": 20,
-    "frac_ge_0_9": 0.75
+    "mean": 0.9899047619047618,
+    "std": 0.0703321565494615,
+    "n": 100,
+    "frac_ge_0_9": 0.97
   },
   "atomicity": {
-    "mean": 0.8958333333333334,
-    "std": 0.2991597027973149,
-    "n": 20,
-    "frac_ge_0_9": 0.9
+    "mean": 1.0,
+    "std": 0.0,
+    "n": 100,
+    "frac_ge_0_9": 1.0
   },
   "non_redundancy": {
-    "mean": 0.9693055555555556,
-    "std": 0.06478522803544753,
-    "n": 20,
-    "frac_ge_0_9": 0.85
+    "mean": 0.965068839657075,
+    "std": 0.09467196562715989,
+    "n": 100,
+    "frac_ge_0_9": 0.87
   },
   "config": {
     "nli_model": "cross-encoder/nli-deberta-v3-large",
@@ -54,10 +54,11 @@
     "metrics": [
       "atomicity",
       "coverage",
+      "coverage_whole",
       "non_redundancy",
       "sentence_claim_coverage"
     ],
     "coverage_topk": 3,
-    "input": "/home/wallat/attribution-eval/library_evals/atomic_claims/predicted_claims.jsonl"
+    "input": "/home/jonaswallat/git/acclaim/library_evals/atomic_claims/predictions/gemma-4-26b-a4b-it.jsonl"
   }
 }

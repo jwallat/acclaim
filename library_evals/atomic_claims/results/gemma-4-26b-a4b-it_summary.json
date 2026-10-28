@@ -1,0 +1,64 @@
+{
+  "n_examples": 100,
+  "claim_count": {
+    "mean": 7.09,
+    "std": 3.2406635123073175,
+    "n": 100,
+    "frac_ge_0_9": 1.0
+  },
+  "faithfulness_mean": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "faithful_fraction": {
+    "mean": null,
+    "std": null,
+    "n": 0,
+    "frac_ge_0_9": null
+  },
+  "coverage_sentence": {
+    "mean": 0.5509761904761905,
+    "std": 0.3896751503356554,
+    "n": 100,
+    "frac_ge_0_9": 0.34
+  },
+  "coverage_whole": {
+    "mean": 0.8627931768885173,
+    "std": 0.30732701238574006,
+    "n": 100,
+    "frac_ge_0_9": 0.83
+  },
+  "sentence_claim_coverage": {
+    "mean": 0.9899047619047618,
+    "std": 0.0703321565494615,
+    "n": 100,
+    "frac_ge_0_9": 0.97
+  },
+  "atomicity": {
+    "mean": 1.0,
+    "std": 0.0,
+    "n": 100,
+    "frac_ge_0_9": 1.0
+  },
+  "non_redundancy": {
+    "mean": 0.965068839657075,
+    "std": 0.09467196562715989,
+    "n": 100,
+    "frac_ge_0_9": 0.87
+  },
+  "config": {
+    "nli_model": "cross-encoder/nli-deberta-v3-large",
+    "threshold": 0.5,
+    "metrics": [
+      "atomicity",
+      "coverage",
+      "coverage_whole",
+      "non_redundancy",
+      "sentence_claim_coverage"
+    ],
+    "coverage_topk": 3,
+    "input": "/home/jonaswallat/git/acclaim/library_evals/atomic_claims/predictions/gemma-4-26b-a4b-it.jsonl"
+  }
+}

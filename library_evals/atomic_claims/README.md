@@ -1,20 +1,54 @@
 # Atomic claim extractor — intrinsic eval
 
 Quantitative evaluation of [`AtomicClaimExtractor`](../../acclaim/claims/atomic.py).
-Reference-free: faithfulness, coverage, atomicity and non-redundancy are
-checked directly against the source answer, so we can run on hundreds of
-ALCE answers instead of 50 hand-labelled ones. See [PLAN.md](PLAN.md) for
-the full rationale.
+Reference-free: coverage, atomicity, non-redundancy (and optionally
+faithfulness) are checked directly against the source answer, so we can run
+on many ALCE answers instead of 50 hand-labelled ones.
 
 ## What gets measured
 
-| Metric          | Definition                                                                |
-|-----------------|---------------------------------------------------------------------------|
-| Faithfulness    | mean NLI(answer → claim); fraction of claims with entailment ≥ threshold  |
-| Coverage (sent) | fraction of answer sentences entailed by some predicted claim             |
-| Coverage (full) | NLI(concat(claims) → answer)                                              |
-| Atomicity       | fraction of claims with no clause-level conjunction (spaCy rule)          |
-| Non-redundancy  | 1 − fraction of claims bidirectionally entailed by another claim          |
+All NLI scores use `cross-encoder/nli-deberta-v3-large` with an entailment
+threshold of 0.5 (`--nli-model`, `--threshold`).
+
+| Metric (`--metrics` name)              | Default | Definition                                                                 |
+|----------------------------------------|---------|----------------------------------------------------------------------------|
+| Coverage, sentence (`coverage`)        | on      | fraction of answer sentences with NLI(concat(top-3 claims by Jaccard overlap) → sentence) ≥ threshold (`--coverage-topk`) |
+| Coverage, lexical (`sentence_claim_coverage`) | on | fraction of answer sentences that are the best Jaccard match of at least one claim |
+| Atomicity (`atomicity`)                | on      | fraction of claims with no verb–verb `conj` dependency (spaCy `en_core_web_sm`); noun-phrase conjunctions are allowed |
+| Non-redundancy (`non_redundancy`)      | on      | 1 − fraction of claims bidirectionally entailed by another claim           |
+| Coverage, whole answer (`coverage_whole`) | off  | NLI(concat(claims) → answer); brittle on long answers (512-token NLI cap)  |
+| Faithfulness (`faithfulness`)          | off     | mean NLI(answer → claim), plus fraction of claims ≥ threshold; off because claims are LLM rephrasings, so answer→claim NLI is not load-bearing |
+
+Answers are split into sentences with the library's
+[`SentenceClaimExtractor`](../../acclaim/claims/sentence.py), which also strips
+citation markers.
+
+## Data
+
+The answers come from the [ALCE](https://github.com/princeton-nlp/ALCE)
+framework. We generated them ourselves on ASQA dev (948 questions); the result
+file is not checked in because of its size (~34 MB):
+
+`asqa-Llama-3.1-8B-Instruct-gtr-shot2-ndoc5-43.json`, produced by ALCE's
+`run.py` with config `configs/asqa_modern_shot2_ndoc5_gtr_default.yaml`,
+eval file `data/asqa_eval_gtr_top100.json`, model
+`meta-llama/Llama-3.1-8B-Instruct`, 2-shot, 5 docs, seed 43, temperature 1.0,
+top-p 0.95 (the full args are stored under `"args"` in the file).
+
+To re-run extraction you need this file (or any ALCE result JSON with a
+`data` list of `{question, docs, output}`) and pass it via `--input`.
+Everything downstream of extraction does not: the question, answer and
+retrieved docs of every evaluated example are embedded in the
+`predictions/*.jsonl` files and in the annotation sheet.
+
+Examples are sampled with `random.Random(seed).sample(range(948), n)`; the
+default `--n 100 --seed 42` gives the same 100 `alce_index` values for every
+model.
+
+`sampled_data.json` (see [Phase 2](#phase-2-not-yet-implemented)) predates
+this and was sampled by `sample_data.ipynb` from an earlier ALCE run
+(`asqa-Meta-Llama-3-8B-Instruct-gtr-shot1-ndoc3-43.json`) that is no longer
+available; the notebook's hardcoded path will not resolve.
 
 ## One-time setup
 
@@ -25,83 +59,68 @@ micromamba run -n acclaim pip install -r requirements.txt
 micromamba run -n acclaim python -m spacy download en_core_web_sm
 ```
 
-A vLLM server is required for the extraction step. The repo ships
-[`start_vllm.sh`](../../start_vllm.sh) (CPU) and [`start_vllm_gpu.sh`](../../start_vllm_gpu.sh)
-(GPU/SLURM).
+Extraction needs an LLM endpoint reachable through LiteLLM: an OpenRouter key
+(`OPENROUTER_API_KEY`) for `openrouter/...` models, or a local
+OpenAI-compatible server such as vLLM (`--api-base`). Scoring downloads the
+deberta NLI model and is much faster on a GPU.
 
-## End-to-end (minimal)
-
-### Option A — L3S "interweb" endpoint (no local server)
-
-The fastest path. Uses `https://interweb.l3s.uni-hannover.de/v1` with the
-key already wired in `exploration.py`.
+## End-to-end
 
 ```bash
-bash run_eval_l3s.sh                              # 500 examples, llama3.1:8b
-bash run_eval_l3s.sh --n 50                       # smoke run
-MODEL=openai/qwen3.5:4b bash run_eval_l3s.sh      # swap model
-L3S_API_KEY=... bash run_eval_l3s.sh              # override key
+export OPENROUTER_API_KEY=...
+ALCE=path/to/asqa-Llama-3.1-8B-Instruct-gtr-shot2-ndoc5-43.json
+
+bash library_evals/atomic_claims/run_eval.sh --input "$ALCE"              # gemma-4-26b, 100 examples
+bash library_evals/atomic_claims/run_eval.sh --input "$ALCE" --n 20       # smaller
+MODEL=openrouter/openai/gpt-5.4-mini bash library_evals/atomic_claims/run_eval.sh --input "$ALCE"
 ```
 
-### Option B — local vLLM
+`run_eval.sh` runs extraction then scoring and writes, per model (name = last
+part of the model id):
 
-Start vLLM in another shell, then:
+- `predictions/<model>.jsonl`
+- `results/<model>_per_example.jsonl`, `results/<model>_summary.json`
 
-```bash
-bash run_eval.sh                                  # default: 500 examples
-bash run_eval.sh --n 100 --skip-whole-coverage    # smaller / faster
-```
+Flags: `--input`, `--n`, `--seed`, `--model`, `--api-base`;
+`--extract-only` / `--score-only` run one half (e.g. extract on a laptop,
+score on a GPU node). Everything else is forwarded to `intrinsic_eval.py`,
+e.g. `--metrics ...`. Env overrides: `MODEL`, `API_BASE`, `API_KEY` (falls
+back to `OPENROUTER_API_KEY`), `N`, `SEED`, `ALCE_INPUT`, `ENV_NAME`
+(default `acclaim`).
 
-Both wrappers run extraction → intrinsic eval → print the summary table.
-Open [`report.ipynb`](report.ipynb) afterwards for plots and the worst-N
-qualitative inspection.
-
-`run_eval.sh` honours `MODEL`, `API_BASE`, `API_KEY`, `N`, `SEED` env vars
-and forwards extra flags to `intrinsic_eval.py`.
-
-## Manual run (if you want each step explicit)
+## Manual run (each step explicit)
 
 ### 1. Extract atomic claims
 
-Needs a vLLM server (or any LiteLLM-compatible endpoint).
-
 ```bash
 micromamba run -n acclaim python -m library_evals.atomic_claims.run_extractor \
-    --n 500 --seed 42 \
-    --model openai/meta-llama/Meta-Llama-3-8B-Instruct \
-    --api-base http://localhost:8000/v1 \
-    --output library_evals/atomic_claims/predicted_claims.jsonl
+    --input "$ALCE" --n 100 --seed 42 \
+    --model openrouter/google/gemma-4-26b-a4b-it --api-base "" \
+    --output library_evals/atomic_claims/predictions/gemma-4-26b-a4b-it.jsonl
 ```
 
-Defaults sample 500 ALCE/ASQA answers from
-`/home/wallat/citation_eval/ALCE/result/asqa-Meta-Llama-3-8B-Instruct-gtr-shot1-ndoc3-43.json`.
-Output: one JSON record per line with `question`, `answer`, `docs`,
-`predicted_claims`, `alce_index`.
+For a local vLLM server use e.g. `--model openai/<hf-name> --api-base
+http://localhost:8000/v1` (the default `--api-base`). Output: one JSON record
+per line with `question`, `answer`, `docs`, `predicted_claims`, `model`,
+`alce_index` (plus `error` if extraction failed for that example).
 
 ### 2. Score the predictions
 
-NLI-heavy; runs on GPU if `torch.cuda.is_available()`, otherwise CPU.
-
 ```bash
 micromamba run -n acclaim python -m library_evals.atomic_claims.intrinsic_eval \
-    --input  library_evals/atomic_claims/predicted_claims.jsonl \
-    --output-prefix library_evals/atomic_claims/results \
-    --batch-size 32 --verbose
+    --input library_evals/atomic_claims/predictions/gemma-4-26b-a4b-it.jsonl \
+    --output-prefix library_evals/atomic_claims/results/gemma-4-26b-a4b-it \
+    --metrics atomicity coverage coverage_whole non_redundancy sentence_claim_coverage
 ```
 
-Writes:
-- `results_per_example.jsonl` — per-example sub-scores (one row per input)
-- `results_summary.json` — dataset-wide aggregates + the run config
-
-The summary table is also printed to stdout.
-
-Useful flags: `--limit N` for smoke tests, `--skip-whole-coverage` (saves
-one NLI pass per example), `--skip-redundancy` (saves the O(n²) pairwise
-pass), `--nli-model <hf-id>` to swap models.
+Writes `<prefix>_per_example.jsonl` (per-example sub-scores) and
+`<prefix>_summary.json` (mean / std / fraction ≥ 0.9 per metric, plus the run
+config) and prints the summary table. Other flags: `--limit N` for smoke
+tests, `--coverage-topk`, `--threshold`, `--nli-model`, `--device`,
+`--batch-size`.
 
 ### 3. Sanity-check the metrics
 
-Implements the three checks from `PLAN.md`:
 1. predicted_claims = whole answer → faithfulness ~1.0, coverage ~1.0, atomicity low
 2. predicted_claims = claims from another example → faithfulness collapses
 3. NLI spot-check on 20 hand-picked probes (negation, numbers, scope)
@@ -111,8 +130,8 @@ micromamba run -n acclaim python -m library_evals.atomic_claims.sanity_check \
     --input library_evals/atomic_claims/predicted_claims.jsonl
 ```
 
-Skip checks 1+2 with `--skip-1-2` to run just the NLI probes (no
-predictions needed).
+Checks 1+2 use the first `--limit` (default 20) records. `--skip-1-2` runs
+just the NLI probes (no predictions needed).
 
 ### 4. Browse results
 
@@ -120,67 +139,109 @@ predictions needed).
 micromamba run -n acclaim jupyter lab library_evals/atomic_claims/report.ipynb
 ```
 
-Renders the summary table, faithfulness/coverage/claim-count histograms,
-metric correlations, and the 5 worst examples by faithfulness and coverage.
+Reads the top-level `results_per_example.jsonl`, `results_summary.json` and
+`predicted_claims.jsonl` (copies of the gemma-4-26b run). Renders the summary table, histograms, metric correlations,
+and the 5 worst examples by faithfulness and coverage. The faithfulness cells
+only work if scoring ran with `--metrics faithfulness ...`; the outputs saved
+in the notebook are from an older 50-example run.
 
 ## Comparing multiple models
 
-`run_eval_all_models.sh` reruns extraction + intrinsic eval for the same set
-of OpenRouter models used by the judge eval
-(`library_evals/judges/config.yaml`), so both halves of the pipeline get
-evaluated on comparable model strength:
+`run_eval_all_models.sh` runs `run_eval.sh` for seven OpenRouter models
+(claude-haiku-4.5, claude-haiku-5.5, gemma-4-26b-a4b-it, gpt-5.4-mini, gpt-6-luna, qwen3.6-35b-a3b,
+llama-3.1-8b-instruct) and forwards all arguments:
 
 ```bash
-OPENROUTER_API_KEY=... bash run_eval_all_models.sh          # all 5 models, 500 examples
-OPENROUTER_API_KEY=... bash run_eval_all_models.sh --n 100 --seed 42
+bash library_evals/atomic_claims/run_eval_all_models.sh --input "$ALCE" \
+    --metrics atomicity coverage coverage_whole non_redundancy sentence_claim_coverage
 ```
 
-Each model writes its own `predicted_claims_<model>.jsonl`,
-`results_<model>_per_example.jsonl`, and `results_<model>_summary.json`
-(unsuffixed `predicted_claims.jsonl` / `results_*.jsonl` are the
-single-model default run). `run_slurm.sh` submits the same sweep as a SLURM
-job (see its `#SBATCH` header for resource requests).
-
-Once summaries exist for multiple models:
+Then:
 
 ```bash
-mamba run -n acclaim python compare_models.py                # print table
-mamba run -n acclaim python compare_models.py --csv comparison.csv
+micromamba run -n acclaim python -m library_evals.atomic_claims.compare_models
+micromamba run -n acclaim python -m library_evals.atomic_claims.compare_models --csv comparison.csv
 ```
 
-Scans `results_*_summary.json` and prints one row per model across
-faithfulness, coverage, atomicity, non-redundancy and mean claim count.
+To refresh the top-level copies the notebook reads:
+
+```bash
+cd library_evals/atomic_claims
+cp predictions/gemma-4-26b-a4b-it.jsonl predicted_claims.jsonl
+cp results/gemma-4-26b-a4b-it_per_example.jsonl results_per_example.jsonl
+cp results/gemma-4-26b-a4b-it_summary.json results_summary.json
+```
+
+`compare_models.py` scans `results/*_summary.json` and
+prints one row per model across all metrics and the mean claim count.
+
+## Results
+
+Run on 2026-10-28: 100 ASQA answers (`--n 100 --seed 42`) from
+`asqa-Llama-3.1-8B-Instruct-gtr-shot2-ndoc5-43.json`, scored with
+`--metrics atomicity coverage coverage_whole non_redundancy sentence_claim_coverage`
+(faithfulness not computed). Means per model, from `compare_models.py`:
+
+| Model                 | Coverage (sent.) | Coverage (whole) | Coverage (lexical) | Atomicity | Non-redundancy | Claims / answer |
+|-----------------------|-----------------:|-----------------:|-------------------:|----------:|---------------:|----------------:|
+| claude-haiku-4.5      | 0.544            | 0.803            | 0.981              | 0.999     | 0.953          | 6.53            |
+| claude-haiku-5.5      | 0.539            | 0.872            | 0.990              | 1.000     | 0.953          | 7.27            |
+| gemma-4-26b-a4b-it    | 0.551            | 0.863            | 0.990              | 1.000     | 0.965          | 7.09            |
+| gpt-5.4-mini          | 0.609            | 0.825            | 0.990              | 0.998     | 0.968          | 6.15            |
+| gpt-6-luna            | 0.615            | 0.864            | 0.997              | 0.998     | 0.961          | 6.19            |
+| llama-3.1-8b-instruct | 0.496            | 0.737            | 0.980              | 0.995     | 0.949          | 6.27            |
+| qwen3.6-35b-a3b       | 0.621            | 0.805            | 0.985              | 0.999     | 0.955          | 6.27            |
+
+- Atomicity, lexical coverage and non-redundancy are near ceiling for every
+  model; they catch broken extractors but do not separate good ones.
+- Sentence-level NLI coverage is the only metric that varies, but its
+  standard error is ~0.04 per model (95% CI ≈ ±0.08), so only the extremes
+  (llama-3.1-8b vs. qwen3.6 / gpt-6-luna / gpt-5.4-mini) are clearly apart.
+  Whole-answer coverage is much higher (0.74–0.87) than sentence-level
+  coverage for every model; we have not yet checked how much of the
+  sentence-level gap is the top-3 claim selection or NLI strictness rather
+  than missing content (`inspect_coverage.py` is the tool for that).
+
+## Manual annotations
+
+[`manual_annotations/atomic_annotation_sheet.csv`](manual_annotations/atomic_annotation_sheet.csv)
+holds 100 claims extracted by gemma-4-26b-a4b-it from 62 of the 100 sampled
+examples, each next to the answer sentence it was matched to. Every claim is
+labelled `correct = 1`; 18 are noted as "not selfcomplete" (they need context
+from the answer to be understood). The claims come from an earlier run of the
+same extractor on the same examples, so they can differ slightly from the
+current `predictions/gemma-4-26b-a4b-it.jsonl`.
 
 ## Debugging a single example
 
 `inspect_coverage.py` prints, for one `alce_index`, each answer sentence
 next to the Jaccard-selected top-K claims, the concat-NLI coverage score,
-and the single-best-claim NLI score — use it when an example's
-`coverage_sentence` looks surprisingly low and you want to see which
-sentence/claim pairing the metric is scoring:
+and the single-best-claim NLI score. Use it when an example's
+`coverage_sentence` looks surprisingly low:
 
 ```bash
-mamba run -n acclaim python -m library_evals.atomic_claims.inspect_coverage \
-    --predictions predicted_claims.jsonl --alce-index 25 --topk 3
+micromamba run -n acclaim python -m library_evals.atomic_claims.inspect_coverage \
+    --predictions library_evals/atomic_claims/predicted_claims.jsonl --alce-index 25 --topk 3
 ```
 
 ## Files
 
-| File                  | Purpose                                                           |
-|-----------------------|-------------------------------------------------------------------|
-| `run_extractor.py`    | Sample ALCE answers, run the extractor, write `predicted_claims.jsonl` |
-| `intrinsic_eval.py`   | NLI + spaCy scoring → per-example JSONL + summary JSON            |
-| `sanity_check.py`     | Three verification scenarios from PLAN.md                         |
-| `inspect_coverage.py` | Per-example debug view of the sentence-coverage scoring           |
-| `compare_models.py`   | Cross-model comparison table from `results_*_summary.json`        |
-| `run_eval.sh`         | One-shot driver for steps 1 → 2, single model                     |
-| `run_eval_l3s.sh`     | Same as `run_eval.sh` but against the L3S interweb endpoint       |
-| `run_eval_all_models.sh` | Reruns `run_eval.sh` across the 5 OpenRouter models compared with `judges/` |
-| `run_slurm.sh`        | SLURM submission wrapper for `run_eval_all_models.sh`             |
-| `report.ipynb`        | Summary table + plots + worst-N qualitative inspection            |
-| `sampled_data.json`   | 50-example human-gold subset (Phase 2, not used here)             |
-| `sample_data.ipynb`   | Notebook that produced `sampled_data.json`                        |
-| `PLAN.md`             | Design rationale                                                  |
+| File                     | Purpose                                                           |
+|--------------------------|-------------------------------------------------------------------|
+| `run_extractor.py`       | Sample ALCE answers, run the extractor, write predictions JSONL   |
+| `intrinsic_eval.py`      | NLI + spaCy scoring → per-example JSONL + summary JSON            |
+| `sanity_check.py`        | The three metric sanity checks above                              |
+| `inspect_coverage.py`    | Per-example debug view of the sentence-coverage scoring           |
+| `compare_models.py`      | Cross-model comparison table from `results/*_summary.json`        |
+| `run_eval.sh`            | Extract → score for one model                                     |
+| `run_eval_all_models.sh` | `run_eval.sh` across the seven OpenRouter models                    |
+| `predictions/`           | Extracted claims per model, `<model>.jsonl` (n=100, seed 42)      |
+| `results/`               | Scores per model, `<model>_per_example.jsonl` / `<model>_summary.json` |
+| `predicted_claims.jsonl`, `results_per_example.jsonl`, `results_summary.json` | Copies of the gemma-4-26b run, read by `report.ipynb` and as script defaults |
+| `report.ipynb`           | Summary table + plots + worst-N qualitative inspection            |
+| `manual_annotations/`    | Human check of 100 extracted claims (see above)                   |
+| `sampled_data.json`      | 50 answers with human-written `atomic_claims` (Phase 2)           |
+| `sample_data.ipynb`      | Notebook that produced `sampled_data.json`                        |
 
 ## Phase 2 (not yet implemented)
 
