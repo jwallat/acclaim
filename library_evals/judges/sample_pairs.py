@@ -8,7 +8,7 @@ with stratification across source examples for topic diversity.
 Also writes annotation_sheet.csv for human labeling (fill in human_label column).
 
 Usage:
-    python sample_pairs.py                           # writes pairs.jsonl + annotation_sheet.csv
+    python sample_pairs.py                           # writes data/pairs.jsonl + annotation_sheet.csv
     python sample_pairs.py --output my_pairs.jsonl  # custom output path
     python sample_pairs.py --n 50 --seed 7          # fewer pairs, different seed
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 
 _HERE = Path(__file__).parent
 _DEFAULT_INPUT = _HERE.parent / "atomic_claims" / "predicted_claims.jsonl"
-_DEFAULT_OUTPUT = _HERE / "pairs.jsonl"
+_DEFAULT_OUTPUT = _HERE / "data" / "pairs.jsonl"
 _DEFAULT_SHEET = _HERE / "annotation_sheet.csv"
 
 

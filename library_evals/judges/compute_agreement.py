@@ -1,15 +1,17 @@
 """
 Compute agreement between judge predictions and human labels.
 
-Reads annotation_sheet.csv (human_label column filled in) and predictions.jsonl
-(judge output), joins on pair_id, and prints accuracy, Cohen's kappa,
-per-label precision/recall/F1, and a confusion matrix.
-Results are also written to agreement_results.json.
+Reads annotation_sheet.csv (human_label column filled in) and one judge
+predictions file (or every *.jsonl in a directory), joins on pair_id, and prints accuracy, Cohen's kappa,
+macro-F1 (with bootstrap 95% CIs), per-label precision/recall/F1,
+calibration of the judge's confidence (ECE, Brier), and a confusion matrix.
+Results are also written to results/agreement_results.json (or, with
+--predictions-dir, to results/agreement_<run>.json per file).
 
 Usage:
-    python compute_agreement.py
-    python compute_agreement.py --human my_labels.csv --predictions my_preds.jsonl
-    python compute_agreement.py --output my_results.json
+    python compute_agreement.py --predictions predictions/jev-1.13_choice_v3.jsonl
+    python compute_agreement.py --predictions my_preds.jsonl --human my_labels.csv --output my_results.json
+    python compute_agreement.py --predictions-dir predictions
 """
 
 from __future__ import annotations
@@ -17,21 +19,22 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import random
 from collections import Counter
 from pathlib import Path
+from typing import Any, Callable
 
 _HERE = Path(__file__).parent
 _DEFAULT_HUMAN = _HERE / "annotation_sheet.csv"
-_DEFAULT_PREDICTIONS = _HERE / "predictions.jsonl"
-_DEFAULT_OUTPUT = _HERE / "agreement_results.json"
+_DEFAULT_OUTPUT = _HERE / "results" / "agreement_results.json"
 
 LABELS = ["SUPPORTED", "REFUTED", "UNCLEAR"]
 
 
-def _load_labeled(
+def _load_joined(
     human_path: Path, predictions_path: Path
-) -> tuple[list[str], list[str]]:
-    """Return (judge_labels, human_labels) joined on pair_id."""
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Return (prediction records, human labels) joined on pair_id."""
     with open(human_path, newline="", encoding="utf-8") as f:
         human_by_id = {
             int(row["pair_id"]): row["human_label"].strip().upper()
@@ -40,18 +43,25 @@ def _load_labeled(
         }
 
     with open(predictions_path, encoding="utf-8") as f:
-        judge_by_id = {
-            rec["pair_id"]: rec["judge_label"].strip().upper()
-            for rec in (json.loads(line) for line in f if line.strip())
+        records_by_id = {
+            rec["pair_id"]: rec for rec in (json.loads(line) for line in f if line.strip())
         }
 
-    judge_labels, human_labels = [], []
+    records, human_labels = [], []
     for pair_id, human in sorted(human_by_id.items()):
-        if pair_id in judge_by_id:
+        if pair_id in records_by_id:
             human_labels.append(human)
-            judge_labels.append(judge_by_id[pair_id])
+            records.append(records_by_id[pair_id])
 
-    return judge_labels, human_labels
+    return records, human_labels
+
+
+def _load_labeled(
+    human_path: Path, predictions_path: Path
+) -> tuple[list[str], list[str]]:
+    """Return (judge_labels, human_labels) joined on pair_id."""
+    records, human_labels = _load_joined(human_path, predictions_path)
+    return [r["judge_label"].strip().upper() for r in records], human_labels
 
 
 def accuracy(judge: list[str], human: list[str]) -> float:
@@ -100,6 +110,56 @@ def per_label_metrics(
     return metrics
 
 
+def macro_f1(judge: list[str], human: list[str]) -> float:
+    """Unweighted mean F1 over LABELS (REFUTED is rare, so accuracy alone misleads)."""
+    per_label = per_label_metrics(judge, human)
+    return sum(m["f1"] for m in per_label.values()) / len(per_label)
+
+
+def bootstrap_ci(
+    metric: Callable[[list[str], list[str]], float],
+    judge: list[str],
+    human: list[str],
+    n_resamples: int = 1000,
+    seed: int = 0,
+) -> tuple[float, float]:
+    """Percentile bootstrap 95% CI of *metric* over resampled pairs."""
+    rng = random.Random(seed)
+    n = len(human)
+    values = []
+    for _ in range(n_resamples):
+        idx = [rng.randrange(n) for _ in range(n)]
+        values.append(metric([judge[i] for i in idx], [human[i] for i in idx]))
+    values.sort()
+    return values[int(0.025 * n_resamples)], values[int(0.975 * n_resamples) - 1]
+
+
+def calibration(
+    confidences: list[float], correct: list[bool], n_bins: int = 10
+) -> dict[str, float]:
+    """
+    Top-label calibration of the judge's confidence in its own label.
+
+    Works for both decision models (probability of the chosen label) and
+    chat LLMs (self-reported confidence). ``ece`` is the expected
+    calibration error over equal-width bins; ``brier`` is the mean squared
+    error between confidence and correctness.
+    """
+    n = len(confidences)
+    if n == 0:
+        return {"ece": 0.0, "brier": 0.0, "mean_confidence": 0.0}
+    bins: list[list[int]] = [[] for _ in range(n_bins)]
+    for i, c in enumerate(confidences):
+        bins[min(int(c * n_bins), n_bins - 1)].append(i)
+    ece = sum(
+        len(b) / n * abs(sum(confidences[i] for i in b) / len(b) - sum(correct[i] for i in b) / len(b))
+        for b in bins
+        if b
+    )
+    brier = sum((c - float(ok)) ** 2 for c, ok in zip(confidences, correct)) / n
+    return {"ece": ece, "brier": brier, "mean_confidence": sum(confidences) / n}
+
+
 def confusion_matrix(judge: list[str], human: list[str]) -> dict[str, dict[str, int]]:
     """Rows = human label, columns = judge label."""
     matrix: dict[str, dict[str, int]] = {
@@ -123,11 +183,12 @@ def _print_confusion_matrix(matrix: dict[str, dict[str, int]]) -> None:
 
 
 def compute_agreement(
-    human_path: Path = _DEFAULT_HUMAN,
-    predictions_path: Path = _DEFAULT_PREDICTIONS,
+    human_path: Path,
+    predictions_path: Path,
     output_path: Path = _DEFAULT_OUTPUT,
 ) -> dict:
-    judge_labels, human_labels = _load_labeled(human_path, predictions_path)
+    records, human_labels = _load_joined(human_path, predictions_path)
+    judge_labels = [r["judge_label"].strip().upper() for r in records]
 
     if not human_labels:
         print("No labeled rows found — fill in the human_label column first.")
@@ -136,12 +197,28 @@ def compute_agreement(
     n = len(human_labels)
     acc = accuracy(judge_labels, human_labels)
     kappa = cohen_kappa(judge_labels, human_labels)
+    mf1 = macro_f1(judge_labels, human_labels)
+    cis = {
+        "accuracy": bootstrap_ci(accuracy, judge_labels, human_labels),
+        "cohen_kappa": bootstrap_ci(cohen_kappa, judge_labels, human_labels),
+        "macro_f1": bootstrap_ci(macro_f1, judge_labels, human_labels),
+    }
+    calib = calibration(
+        [float(r.get("judge_confidence") or 0.0) for r in records],
+        [j == h for j, h in zip(judge_labels, human_labels)],
+    )
     per_label = per_label_metrics(judge_labels, human_labels)
     matrix = confusion_matrix(judge_labels, human_labels)
 
+    def _ci(key: str) -> str:
+        lo, hi = cis[key]
+        return f"[{lo:.3f}, {hi:.3f}]"
+
     print(f"\n=== Judge Agreement Results ({n} labeled pairs) ===\n")
-    print(f"  Accuracy:     {acc:.3f}  ({sum(j == h for j, h in zip(judge_labels, human_labels))}/{n} correct)")
-    print(f"  Cohen's κ:    {kappa:.3f}\n")
+    print(f"  Accuracy:     {acc:.3f} {_ci('accuracy')}  ({sum(j == h for j, h in zip(judge_labels, human_labels))}/{n} correct)")
+    print(f"  Cohen's κ:    {kappa:.3f} {_ci('cohen_kappa')}")
+    print(f"  Macro-F1:     {mf1:.3f} {_ci('macro_f1')}")
+    print(f"  ECE / Brier:  {calib['ece']:.3f} / {calib['brier']:.3f}  (mean confidence {calib['mean_confidence']:.3f})\n")
     print("  Per-label metrics:")
     for label, m in per_label.items():
         print(f"    {label:<10}  P={m['precision']:.3f}  R={m['recall']:.3f}  F1={m['f1']:.3f}")
@@ -153,10 +230,14 @@ def compute_agreement(
         "n_labeled": n,
         "accuracy": acc,
         "cohen_kappa": kappa,
+        "macro_f1": mf1,
+        "ci95": cis,
+        "calibration": calib,
         "per_label": per_label,
         "confusion_matrix": matrix,
     }
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Results written to {output_path}")
@@ -169,24 +250,25 @@ def main() -> None:
     parser.add_argument("--human", type=Path, default=_DEFAULT_HUMAN)
     parser.add_argument("--predictions", type=Path, default=None)
     parser.add_argument("--predictions-dir", type=Path, default=None,
-                        help="Run against all predictions*.jsonl files in this directory.")
+                        help="Run against every *.jsonl file in this directory (e.g. predictions/).")
     parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
     args = parser.parse_args()
+    if args.predictions is None and args.predictions_dir is None:
+        parser.error("pass --predictions <file> or --predictions-dir <dir>")
 
     if args.predictions_dir is not None:
-        files = sorted(args.predictions_dir.glob("predictions*.jsonl"))
+        files = sorted(args.predictions_dir.glob("*.jsonl"))
         if not files:
-            print(f"No predictions*.jsonl files found in {args.predictions_dir}")
+            print(f"No *.jsonl files found in {args.predictions_dir}")
             return
         for pred_file in files:
             print(f"\n{'='*60}")
             print(f"Model: {pred_file.stem}")
             print(f"{'='*60}")
-            output = pred_file.parent / f"agreement_{pred_file.stem}.json"
+            output = _HERE / "results" / f"agreement_{pred_file.stem}.json"
             compute_agreement(args.human, pred_file, output)
     else:
-        predictions = args.predictions or _DEFAULT_PREDICTIONS
-        compute_agreement(args.human, predictions, args.output)
+        compute_agreement(args.human, args.predictions, args.output)
 
 
 if __name__ == "__main__":

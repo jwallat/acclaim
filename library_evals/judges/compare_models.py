@@ -1,5 +1,5 @@
 """
-Compare inter-model agreement across all predictions_*.jsonl files.
+Compare inter-model agreement across all predictions/*.jsonl files.
 
 For each pair of models, prints:
   - % of rows with identical judge_label
@@ -10,7 +10,7 @@ Also prints a per-model label distribution.
 Usage:
     python compare_models.py
     python compare_models.py --dir path/to/dir
-    python compare_models.py --output inter_model_agreement.json
+    python compare_models.py --output results/inter_model_agreement.json
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ from collections import Counter
 from pathlib import Path
 
 _HERE = Path(__file__).parent
+_PREDICTIONS_DIR = _HERE / "predictions"
+_DEFAULT_OUTPUT = _HERE / "results" / "inter_model_agreement.json"
 LABELS = ["SUPPORTED", "REFUTED", "UNCLEAR"]
 
 
@@ -58,12 +60,12 @@ def cohen_kappa(a: list[str], b: list[str]) -> float:
 
 
 def compare_models(
-    pred_dir: Path = _HERE,
-    output_path: Path = _HERE / "inter_model_agreement.json",
+    pred_dir: Path = _PREDICTIONS_DIR,
+    output_path: Path = _DEFAULT_OUTPUT,
 ) -> dict:
-    files = sorted(pred_dir.glob("predictions*.jsonl"))
+    files = sorted(pred_dir.glob("*.jsonl"))
     if not files:
-        print("No predictions*.jsonl files found.")
+        print(f"No *.jsonl files found in {pred_dir}.")
         return {}
 
     models = {_model_name(f): _load_predictions(f) for f in files}
@@ -102,6 +104,7 @@ def compare_models(
     print()
 
     results = {"distributions": dist_results, "pairwise": pair_results}
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Results written to {output_path}")
@@ -110,8 +113,8 @@ def compare_models(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inter-model judge agreement.")
-    parser.add_argument("--dir", type=Path, default=_HERE)
-    parser.add_argument("--output", type=Path, default=_HERE / "inter_model_agreement.json")
+    parser.add_argument("--dir", type=Path, default=_PREDICTIONS_DIR)
+    parser.add_argument("--output", type=Path, default=_DEFAULT_OUTPUT)
     args = parser.parse_args()
     compare_models(args.dir, args.output)
 

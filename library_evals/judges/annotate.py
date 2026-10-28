@@ -1,7 +1,7 @@
 """
 Terminal annotation tool for labeling (claim, doc) pairs.
 
-Reads pairs from pairs.jsonl, loads any existing labels from annotation_sheet.csv,
+Reads pairs from data/pairs.jsonl, loads any existing labels from annotation_sheet.csv,
 and saves labels back to annotation_sheet.csv after each keystroke.
 
 Usage:
@@ -31,7 +31,7 @@ import tty
 from pathlib import Path
 
 _HERE = Path(__file__).parent
-_DEFAULT_PAIRS = _HERE / "pairs.jsonl"
+_DEFAULT_PAIRS = _HERE / "data" / "pairs.jsonl"
 _DEFAULT_OUTPUT = _HERE / "annotation_sheet.csv"
 
 LABELS = {"s": "SUPPORTED", "r": "REFUTED", "u": "UNCLEAR"}
