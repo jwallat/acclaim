@@ -54,11 +54,14 @@ The server exposes two JSON endpoints the frontend uses to load batch runs:
 - **Theme button** — toggles light/dark. Defaults to your OS preference; saved in `localStorage`.
 - Clicking a `[N]` marker scrolls to the matching cited document and flashes its border.
 - **Ask question** — switches the answer panel into a live query: retrieves
-  documents (BM25 via `acclaim_explorer/server/retrieval.py`), generates an
-  answer, evaluates it, and streams progress via Server-Sent Events. Requires
-  a BM25 index configured in `acclaim_explorer_config.yaml` (see that file
-  for local-index vs. prebuilt-index options) and an LLM API key for the
-  generator/judge models resolved from the repo-root `.env` file.
+  documents (via `acclaim_explorer/server/retrieval.py`), generates an
+  answer, evaluates it, and streams progress via Server-Sent Events. The
+  retriever is set by `retriever.default` in `acclaim_explorer_config.yaml`:
+  `keenable` (live web search, default; works without a key, optional
+  `KEENABLE_API_KEY` for higher limits) or `bm25` (MSMARCO via pyserini; see
+  that file for local-index vs. prebuilt-index options). A single query can
+  override it with `/query?q=...&retriever=bm25`. Also needs an LLM API key
+  for the generator/judge models, resolved from the repo-root `.env` file.
 
 ## Known limitations
 
@@ -74,7 +77,7 @@ The server exposes two JSON endpoints the frontend uses to load batch runs:
 - `server/main.py` — FastAPI app, `/api/runs` endpoints, `/query` SSE pipeline
 - `server/serialization.py` — `augment_record()`, shared by both the batch and live-query paths
 - `server/config.py` — loads `eval_config.yaml` + `acclaim_explorer_config.yaml`
-- `server/retrieval.py` — BM25 retrieval backend
+- `server/retrieval.py` — retrieval backends (Keenable web search, BM25)
 - `server/generation.py` — RAG answer generation for the live-query pipeline
 - `server/build_index.py` — CLI to pre-build a local BM25 index
 - `PLAN.md` — design notes for the original v1 prototype (predates the FastAPI server and current output format; kept for historical context)

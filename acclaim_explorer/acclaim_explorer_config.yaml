@@ -3,8 +3,14 @@
 #   uvicorn acclaim_explorer.server.main:app --port 8000 --reload
 
 retriever:
-  default: bm25
+  default: keenable   # keenable (live web search) | bm25 (MSMARCO via pyserini)
   top_k: 5
+
+  keenable:
+    # Live web search: https://docs.keenable.ai
+    # Without a key, the keyless public endpoint is used (1,000 requests/hour per IP).
+    api_key: ${KEENABLE_API_KEY}
+    snippet_max_length: 1500
 
   bm25:
     # Option A — prebuilt MSMARCO passage index (downloads ~1.7 GB to ~/.cache/pyserini/ on first use).
@@ -16,6 +22,7 @@ retriever:
     # index_path: ./data/bm25_index
 
 generator:
+  # model: "openrouter/anthropic/claude-haiku-5.5"
   model: "openrouter/google/gemma-4-31b-it"
   api_key: ${OPENROUTER_API_KEY}
   temperature: 0.7

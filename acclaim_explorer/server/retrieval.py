@@ -81,3 +81,57 @@ class PyseriniRetriever(RetrieverBase):
             docs.append(Document(doc_id=f"doc_{i}", text=full_text))
         logger.debug("PyseriniRetriever returned %d docs for %r", len(docs), question)
         return docs
+
+
+class KeenableRetriever(RetrieverBase):
+    """Live web search via the Keenable API (https://docs.keenable.ai).
+
+    Without an API key, the keyless public endpoint is used (rate-limited per IP,
+    1,000 requests/hour). With a key, the authenticated endpoint is used.
+    """
+
+    _BASE_URL = "https://api.keenable.ai/v1/search"
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        top_k: int = 7,
+        snippet_max_length: int = 1500,
+        app_title: str = "acclaim-explorer",
+        timeout: float = 30.0,
+    ) -> None:
+        if api_key:
+            self._url = self._BASE_URL
+            self._headers = {"X-API-Key": api_key}
+        else:
+            self._url = f"{self._BASE_URL}/public"
+            self._headers = {"X-Keenable-Title": app_title}
+        self._top_k = top_k
+        self._snippet_max_length = snippet_max_length
+        self._timeout = timeout
+
+    def retrieve(self, question: str) -> list[Document]:
+        import httpx
+
+        resp = httpx.post(
+            self._url,
+            headers=self._headers,
+            json={
+                "query": question,
+                "max_results": self._top_k,
+                "snippet_max_length": self._snippet_max_length,
+            },
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        docs: list[Document] = []
+        for result in resp.json().get("results", []):
+            snippet = (result.get("snippet") or "").strip()
+            if not snippet:
+                continue
+            title = (result.get("title") or "").strip()
+            full_text = f"{title}\n\n{snippet}" if title else snippet
+            docs.append(Document(doc_id=f"doc_{len(docs) + 1}", text=full_text))
+        logger.debug("KeenableRetriever returned %d docs for %r", len(docs), question)
+        return docs

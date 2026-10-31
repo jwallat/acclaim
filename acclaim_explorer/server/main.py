@@ -20,7 +20,7 @@ from acclaim.evaluate import evaluate
 
 from .config import AcclaimExplorerConfig, load_acclaim_explorer_config
 from .generation import RagGenerator
-from .retrieval import PyseriniRetriever, RetrieverBase
+from .retrieval import KeenableRetriever, PyseriniRetriever, RetrieverBase
 from .serialization import augment_record
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,13 @@ def _build_retriever(cfg: AcclaimExplorerConfig, name: str) -> RetrieverBase:
             prebuilt_index=cfg.retriever.bm25_prebuilt_index,
             top_k=cfg.retriever.top_k,
         )
-    raise ValueError(f"Unknown retriever: {name!r}. Choose 'bm25'.")
+    if name == "keenable":
+        return KeenableRetriever(
+            api_key=cfg.retriever.keenable_api_key,
+            top_k=cfg.retriever.top_k,
+            snippet_max_length=cfg.retriever.keenable_snippet_max_length,
+        )
+    raise ValueError(f"Unknown retriever: {name!r}. Choose 'bm25' or 'keenable'.")
 
 
 cfg = load_acclaim_explorer_config()
@@ -192,10 +198,10 @@ async def _pipeline(question: str, retriever_name: str):
 @app.get("/query")
 async def query_endpoint(
     q: str = Query(..., min_length=1, description="The question to evaluate"),
-    retriever: str = Query(default="bm25", description="Retriever backend"),
+    retriever: str | None = Query(default=None, description="Retriever backend (default from config)"),
 ) -> StreamingResponse:
     return StreamingResponse(
-        _pipeline(q, retriever),
+        _pipeline(q, retriever or cfg.retriever.default),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

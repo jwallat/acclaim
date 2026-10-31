@@ -108,6 +108,8 @@ class RetrieverConfig:
     top_k: int = 7
     bm25_index_path: str | None = None       # path to a local Lucene index
     bm25_prebuilt_index: str | None = None   # pyserini prebuilt index name (auto-downloads)
+    keenable_api_key: str | None = None      # optional; keyless public endpoint when unset
+    keenable_snippet_max_length: int = 1500
 
 
 @dataclass
@@ -134,6 +136,8 @@ def load_acclaim_explorer_config(
         top_k=int(retr.get("top_k", 7)),
         bm25_index_path=retr.get("bm25", {}).get("index_path"),
         bm25_prebuilt_index=retr.get("bm25", {}).get("prebuilt_index"),
+        keenable_api_key=_resolve(retr.get("keenable", {}).get("api_key")) or None,  # type: ignore[arg-type]
+        keenable_snippet_max_length=int(retr.get("keenable", {}).get("snippet_max_length", 1500)),
     )
 
     generator_config = GeneratorConfig(

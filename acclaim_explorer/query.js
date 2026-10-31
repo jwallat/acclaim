@@ -78,7 +78,7 @@
     evalBtn.textContent = "Running…";
     questionInput.disabled = true;
 
-    const url = `/query?q=${encodeURIComponent(question)}&retriever=bm25`;
+    const url = `/query?q=${encodeURIComponent(question)}`;
     const es  = new EventSource(url);
     activeEs  = es;
     _setStage("Retrieving…");
