@@ -54,6 +54,13 @@ class AtomicClaimExtractor(ClaimExtractor):
         "Output:"
     )
 
+    _QUESTION_PROMPT = (
+        "The text below answers the following question. Use the question only to "
+        "make the claims self-contained (e.g. to resolve references or short "
+        "answers). Do NOT extract claims from the question itself.\n\n"
+        "Question: {question}\n\n"
+    )
+
     def __init__(
         self,
         model: str = "gpt-4o-mini",
@@ -63,6 +70,7 @@ class AtomicClaimExtractor(ClaimExtractor):
         max_tokens: int = 1024,
         max_retries: int = 3,
         system_prompt: str | None = None,
+        include_question: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -76,10 +84,12 @@ class AtomicClaimExtractor(ClaimExtractor):
             max_tokens:    Maximum tokens in response.
             max_retries:   Retry attempts on JSON parse failure.
             system_prompt: Override the default system prompt.
+            include_question: Add ``answer.question`` (if set) to the prompt.
             **kwargs:      Extra arguments forwarded to ``litellm.completion()``.
         """
         self.max_retries = max_retries
         self.system_prompt = system_prompt or self._SYSTEM_PROMPT
+        self.include_question = include_question
         self.client = LiteLLMClient(
             model=model,
             api_base=api_base,
@@ -130,9 +140,13 @@ class AtomicClaimExtractor(ClaimExtractor):
         if not answer.text:
             return []
 
+        prompt = self._USER_PROMPT.format(text=answer.text)
+        if self.include_question and answer.question:
+            prompt = self._QUESTION_PROMPT.format(question=answer.question) + prompt
+
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": self._USER_PROMPT.format(text=answer.text)},
+            {"role": "user", "content": prompt},
         ]
 
         try:

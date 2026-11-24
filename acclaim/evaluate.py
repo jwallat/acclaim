@@ -152,7 +152,7 @@ def evaluate(
     doc_by_id: dict[str, Document] = {doc.doc_id: doc for doc in documents}
 
     # ── Stage 1: Claim extraction ─────────────────────────────────────────────
-    answer_obj = Answer(text=answer)
+    answer_obj = Answer(text=answer, question=question)
     claims = extractor.extract(answer_obj)
     logger.info("Extracted %d claims", len(claims))
 
@@ -286,6 +286,7 @@ def _build_extractor(cfg: EvalConfig) -> ClaimExtractor:
             max_retries=ac.max_retries if ac.max_retries is not None else j.max_retries,
             thinking=ac.thinking if ac.thinking is not None else j.thinking,
             system_prompt=ac.system_prompt,
+            include_question=ac.include_question,
         )
 
     return cls()

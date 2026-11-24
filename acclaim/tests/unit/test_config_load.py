@@ -76,6 +76,12 @@ def test_parse_config_atomic_claim_extractor_falls_back_to_none():
     cfg = _parse_config({"claim_extractor": "atomic"})
     assert cfg.atomic_claim_extractor.model is None
     assert cfg.atomic_claim_extractor.max_tokens == 1024
+    assert cfg.atomic_claim_extractor.include_question is False
+
+
+def test_parse_config_atomic_claim_extractor_include_question():
+    cfg = _parse_config({"atomic_claim_extractor": {"include_question": True}})
+    assert cfg.atomic_claim_extractor.include_question is True
 
 
 def test_parse_config_jaccard_aligner_weighted_default_true():

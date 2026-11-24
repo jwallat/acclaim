@@ -4,6 +4,8 @@ Unit tests for AtomicClaimExtractor (all LLM calls mocked).
 
 from unittest.mock import patch
 
+import pytest
+
 from acclaim.claims.atomic import AtomicClaimExtractor
 from acclaim.data_models import Answer
 
@@ -64,3 +66,24 @@ def test_extract_retries_then_succeeds():
     with patch.object(extractor.client, "call", side_effect=responses):
         claims = extractor.extract(Answer(text="Claim one."))
     assert [c.text for c in claims] == ["Claim one."]
+
+
+@pytest.mark.parametrize(
+    "include_question, question, expect_question",
+    [
+        (False, "When was {it} built?", False),
+        (True, None, False),
+        (True, "When was {it} built?", True),
+    ],
+)
+def test_question_in_prompt_only_when_enabled(include_question, question, expect_question):
+    extractor = _make_extractor(include_question=include_question)
+    with patch.object(extractor.client, "call", return_value='["A."]') as call:
+        extractor.extract(Answer(text="In 1889.", question=question))
+    prompt = call.call_args.args[0][1]["content"]
+    base = extractor._USER_PROMPT.format(text="In 1889.")
+    if expect_question:
+        assert prompt.endswith(base)
+        assert f"Question: {question}\n" in prompt
+    else:
+        assert prompt == base

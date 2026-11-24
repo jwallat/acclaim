@@ -143,6 +143,7 @@ atomic_claim_extractor:
   max_retries: null
   thinking: null
   system_prompt: null   # null keeps the extractor's built-in claim-decomposition prompt
+  include_question: false   # true = also show the LLM the question passed to evaluate()
 
 # ── LLM citation aligner ─────────────────────────────────────────────────────
 # The auto-selected aligner for atomic claims (see `aligner:` above). Asks the

@@ -66,6 +66,7 @@ class Answer:
     """An LLM-generated answer containing inline citation markers like [1], [2]."""
 
     text: str
+    question: str | None = None
 
 
 @dataclass(frozen=True)

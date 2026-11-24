@@ -153,6 +153,22 @@ def test_build_extractor_atomic_inherits_judge_connection_fields():
     assert extractor.client.temperature == 0.3
 
 
+def test_build_extractor_atomic_forwards_include_question():
+    cfg = EvalConfig(claim_extractor="atomic")
+    assert _build_extractor(cfg).include_question is False
+    cfg.atomic_claim_extractor.include_question = True
+    assert _build_extractor(cfg).include_question is True
+
+
+def test_evaluate_passes_question_to_extractor():
+    cfg = EvalConfig(claim_extractor="sentence")
+    extractor = MagicMock(spec=SentenceClaimExtractor)
+    extractor.extract.return_value = []
+    evaluate("A fact [1].", [Document(doc_id="d", text="A.")], question="Q?", config=cfg,
+             claim_extractor=extractor, judge=MagicMock(spec=EvidenceJudge))
+    assert extractor.extract.call_args.args[0].question == "Q?"
+
+
 def test_build_extractor_unknown_key_raises():
     cfg = EvalConfig(claim_extractor="nonexistent")
     with pytest.raises(ValueError, match="Unknown claim_extractor"):

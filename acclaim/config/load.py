@@ -168,6 +168,7 @@ class AtomicClaimExtractorConfig:
     max_retries: int | None = None
     thinking: bool | None = None
     system_prompt: str | None = None
+    include_question: bool = False
 
 
 @dataclass
@@ -396,6 +397,7 @@ def _parse_config(raw: dict[str, Any]) -> EvalConfig:
         max_retries=atomic_claim_extractor_raw.get("max_retries"),
         thinking=atomic_claim_extractor_raw.get("thinking"),
         system_prompt=atomic_claim_extractor_raw.get("system_prompt") or None,
+        include_question=atomic_claim_extractor_raw.get("include_question", False),
     )
 
     jaccard_aligner_raw = raw.get("jaccard_aligner", {})

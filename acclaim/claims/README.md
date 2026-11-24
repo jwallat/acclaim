@@ -47,6 +47,7 @@ atomic_claim_extractor:
   model: openrouter/google/gemma-4-26b-a4b-it
   max_tokens: 12196
   system_prompt: null     # null = built-in decomposition prompt
+  include_question: false # true = also show the LLM the question passed to evaluate()
 ```
 
 See [`config/default.yaml`](../config/default.yaml) for all fields. The
